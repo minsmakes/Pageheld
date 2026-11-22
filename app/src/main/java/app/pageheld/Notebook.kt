@@ -1,0 +1,149 @@
+package app.pageheld
+
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.room.*
+import java.time.*
+import java.time.format.DateTimeFormatter
+import java.util.UUID
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.*
+
+val papers = listOf("Ruled", "Blank", "Grid", "Dot Grid", "Letter", "Scrapbook")
+val templates =
+    linkedMapOf(
+        "Free Writing" to "",
+        "Daily Diary" to "Today I…\n\nOne moment to remember…",
+        "Memory" to "I want to remember…",
+        "Gratitude" to "Today I’m grateful for…\n\nIt mattered because…",
+        "Letter" to "Dear ,\n\n",
+        "Reflection" to "What happened?\n\nWhat did I learn?",
+        "Workout Reflection" to "Today’s movement\n\nHow I felt afterwards",
+    )
+val moods = listOf("Joyful", "Content", "Uneasy", "Low", "Sad")
+
+fun uid() = UUID.randomUUID().toString()
+
+fun date(ms: Long) = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())
+
+fun stamp(ms: Long, pattern: String) = date(ms).format(DateTimeFormatter.ofPattern(pattern))
+
+@Entity
+data class Page(
+    @PrimaryKey val id: String = uid(),
+    val created: Long = System.currentTimeMillis(),
+    val title: String = "",
+    val body: String = "",
+    val template: String = "Free Writing",
+    val paper: String = "",
+    val mood: String = "",
+    val place: String = "",
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val chapter: String? = null,
+    val media: String = "",
+    val starred: Boolean = false,
+)
+
+fun Page.heading() =
+    title.ifBlank {
+        body.lineSequence().firstOrNull { it.isNotBlank() }?.take(60) ?: "Untitled page"
+    }
+
+fun Page.files() = media.lines().filter { it.isNotBlank() }
+
+@Entity
+data class Chapter(
+    @PrimaryKey val id: String = uid(),
+    val name: String,
+    val cover: Int,
+    val position: Long = System.currentTimeMillis(),
+)
+
+@Dao
+interface JournalDao {
+    @Query("SELECT * FROM Page ORDER BY created DESC") fun pages(): Flow<List<Page>>
+
+    @Query("SELECT * FROM Chapter ORDER BY position, id") fun chapters(): Flow<List<Chapter>>
+
+    @Upsert suspend fun save(page: Page)
+
+    @Upsert suspend fun save(chapter: Chapter)
+
+    @Query("DELETE FROM Page WHERE id=:id") suspend fun removePage(id: String)
+
+    @Query("UPDATE Page SET chapter=NULL WHERE chapter=:id") suspend fun detach(id: String)
+
+    @Query("DELETE FROM Chapter WHERE id=:id") suspend fun removeChapter(id: String)
+
+    @Transaction
+    suspend fun deleteChapter(id: String) {
+        detach(id)
+        removeChapter(id)
+    }
+
+    @Transaction
+    suspend fun swap(a: Chapter, b: Chapter) {
+        save(a.copy(position = b.position))
+        save(b.copy(position = a.position))
+    }
+}
+
+@Database(entities = [Page::class, Chapter::class], version = 1, exportSchema = false)
+abstract class NotebookDb : RoomDatabase() {
+    abstract fun journal(): JournalDao
+}
+
+private val Context.preferences by preferencesDataStore("appearance")
+
+class Notebook
+internal constructor(
+    val context: Context,
+    val db: NotebookDb =
+        Room.databaseBuilder(context, NotebookDb::class.java, "pageheld.db").build(),
+) {
+    val dao = db.journal()
+    val settings =
+        context.preferences.data.map { p ->
+            p.asMap().mapKeys { it.key.name }.mapValues { it.value.toString() }
+        }
+    private val jobs = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    val errors = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    init {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            for (job in jobs) try {
+                job()
+            } catch (e: Exception) {
+                errors.emit("Couldn’t save changes. Check device storage.")
+            }
+        }
+    }
+
+    fun queue(job: suspend () -> Unit) {
+        jobs.trySend(job).getOrThrow()
+    }
+
+    fun save(page: Page) = queue { dao.save(page) }
+
+    fun setting(key: String, value: String) = queue { applySettings(mapOf(key to value)) }
+
+    suspend fun applySettings(values: Map<String, String>) {
+        context.preferences.edit { prefs ->
+            values.forEach { (key, value) -> prefs[stringPreferencesKey(key)] = value }
+        }
+    }
+
+    companion object {
+        @Volatile private var instance: Notebook? = null
+
+        fun get(context: Context) =
+            instance
+                ?: synchronized(this) {
+                    instance ?: Notebook(context.applicationContext).also { instance = it }
+                }
+    }
+}
