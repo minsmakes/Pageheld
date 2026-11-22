@@ -18,12 +18,13 @@ val ink = Color(0xff30362e)
 val muted = Color(0xff6e7066)
 val sage = Color(0xff617655)
 val pale = Color(0xffeceddf)
-val ivory = Color(0xfffbf7ef)
+val ivory = Color(0xfffcf9f2)
 val edge = Color(0xffd9cfc0)
 val swatches =
     listOf(ivory, Color(0xfff5e9d6), Color(0xfff4e3de), Color(0xffe4ebef), Color(0xffe5eadc))
-val serif = FontFamily.Serif
-val round = RoundedCornerShape(15.dp)
+val serif = FontFamily(Font(R.font.caslon_regular,FontWeight.Normal), Font(R.font.caslon_italic,FontWeight.Normal,FontStyle.Italic))
+internal const val PAGEHELD_WORDMARK = "Pageheld."
+val round = RoundedCornerShape(9.dp)
 val icons =
     mapOf(
         "house" to R.drawable.i_house,
@@ -87,30 +88,32 @@ fun Action(name: String, label: String, enabled: Boolean = true, click: () -> Un
 }
 
 @Composable
-fun Title(text: String, size: Int = 21, italic: Boolean = false) {
+fun Title(text: String, size: Int = 20, italic: Boolean = false) {
     Text(
         text,
         color = ink,
-        fontFamily = serif,
-        fontSize = size.sp,
-        lineHeight = (size + 5).sp,
+        fontFamily = LocalDisplayFont.current,
+        fontSize = uiSp(if (size >= 20) size - 2 else size - 1),
+        lineHeight = uiSp(size + 3),
+        letterSpacing = 0.sp,
+        fontWeight = FontWeight.Normal,
         fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
     )
 }
 
 @Composable
 fun Note(text: String, modifier: Modifier = Modifier) =
-    Text(text, modifier, color = muted, fontSize = 14.sp, lineHeight = 20.sp)
+    Text(text, modifier, color = muted, fontSize = uiSp(13), lineHeight = uiSp(19), letterSpacing = .1.sp)
 
 @Composable
 fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier
             .fillMaxWidth()
-            .shadow(2.dp, round)
+            .shadow(.4.dp, round)
             .background(Color(0xfffcf9f2), round)
-            .border(.7.dp, edge, round)
-            .padding(14.dp),
+            .border(.55.dp, edge, round)
+            .padding(12.dp),
         content = content,
     )
 }
@@ -131,7 +134,7 @@ fun Tag(text: String, selected: Boolean = false, icon: String? = null, click: ()
                 Glyph(icon, size = 16)
                 Spacer(Modifier.width(5.dp))
             }
-            Text(text, color = if (selected) Color.White else ink, fontSize = 14.sp)
+            Text(text, color = if (selected) Color.White else ink, fontSize = uiSp(13))
         }
     }
 }
@@ -143,14 +146,35 @@ fun Header(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
-        Modifier.fillMaxWidth().height(58.dp).background(ivory).padding(horizontal = 8.dp),
+        Modifier.fillMaxWidth().heightIn(min = 54.dp).background(ivory).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leading != null) leading() else Spacer(Modifier.width(10.dp))
-        Box(Modifier.weight(1f)) { Title(title, if (title == "pageheld.") 30 else 26) }
+        Box(Modifier.weight(1f)) { Title(title, if (title == PAGEHELD_WORDMARK) 26 else 23) }
         actions()
     }
     HorizontalDivider(thickness = .6.dp, color = edge)
+}
+
+// A tiny repeating grain is shared by all paper surfaces and stays fixed as the page scrolls.
+internal val paperGrain by lazy {
+    val random = java.util.Random(412)
+    val pixels = IntArray(64 * 64) { android.graphics.Color.argb(random.nextInt(9), 126, 113, 86) }
+    val tile =
+        android.graphics.Bitmap.createBitmap(
+            pixels,
+            64,
+            64,
+            android.graphics.Bitmap.Config.ARGB_8888,
+        )
+    android.graphics.Paint().apply {
+        shader =
+            android.graphics.BitmapShader(
+                tile,
+                android.graphics.Shader.TileMode.REPEAT,
+                android.graphics.Shader.TileMode.REPEAT,
+            )
+    }
 }
 
 fun Modifier.paper(
@@ -170,6 +194,7 @@ fun Modifier.paper(
             )
         )
     )
+    drawContext.canvas.nativeCanvas.drawRect(0f, 0f, size.width, size.height, paperGrain)
     val step = interval.toPx().coerceAtLeast(4f)
     val rule = Color(0xffaca99f).copy(alpha = if (margin.value > 0) .52f else .32f)
     var y = ((phase % step) + step) % step
@@ -180,13 +205,13 @@ fun Modifier.paper(
                 drawCircle(rule, 1.dp.toPx(), Offset(x, y))
                 x += step
             }
-        } else drawLine(rule, Offset(0f, y), Offset(size.width, y), .65.dp.toPx())
+        } else drawLine(rule, Offset(0f, y), Offset(size.width, y), .5.dp.toPx())
         y += step
     }
     if (style == "Grid") {
         var x = 0f
         while (x < size.width) {
-            drawLine(rule, Offset(x, 0f), Offset(x, size.height), .65.dp.toPx())
+            drawLine(rule, Offset(x, 0f), Offset(x, size.height), .5.dp.toPx())
             x += step
         }
     }
@@ -307,7 +332,9 @@ fun Cover(index: Int, modifier: Modifier) {
 
 @Composable
 fun Empty(title: String, detail: String) {
-    Panel {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp)) {
+        Glyph("feather", tint = sage, size = 20)
+        Spacer(Modifier.height(7.dp))
         Title(title, 19)
         Spacer(Modifier.height(5.dp))
         Note(detail)

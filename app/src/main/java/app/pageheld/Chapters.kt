@@ -3,6 +3,7 @@ package app.pageheld
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -80,7 +81,7 @@ fun Chapters(
                 items(chapters, key = { it.id }) { c ->
                     Row(
                         Modifier.fillMaxWidth()
-                            .shadow(2.dp, round)
+                            .shadow(1.dp, round)
                             .clip(round)
                             .background(ivory.copy(alpha = .9f))
                             .border(.8.dp, edge, round)
@@ -177,8 +178,10 @@ fun You(book: Notebook, settings: Map<String, String>) {
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
             Panel {
-                Title("Your notebook", 24)
-                Note("Choose the look of your writing pages.")
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Title("Fonts", 22)
+                    FontOptions(book, settings)
+                }
             }
             Panel {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -191,6 +194,26 @@ fun You(book: Notebook, settings: Map<String, String>) {
                 }
             }
             Panel {
+                listOf("openingCover" to "Opening cover", "reduceMotion" to "Reduce motion")
+                    .forEach { (key, label) ->
+                        val checked =
+                            settings[key]?.toBooleanStrictOrNull() ?: (key == "openingCover")
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .toggleable(
+                                    value = checked,
+                                    role = androidx.compose.ui.semantics.Role.Switch,
+                                    onValueChange = { book.setting(key, it.toString()) },
+                                )
+                                .heightIn(min = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(label, Modifier.weight(1f))
+                            Switch(checked = checked, onCheckedChange = null)
+                        }
+                    }
+            }
+            Panel {
                 Title("Mood journal", 20)
                 val checkIns =
                     settings
@@ -201,19 +224,25 @@ fun You(book: Notebook, settings: Map<String, String>) {
                 if (checkIns.isEmpty()) Note("Your daily check-ins appear here.")
                 else
                     checkIns.forEach { (day, mood) ->
-                        Note(day.removePrefix("mood.") + "   ·   " + mood)
+                        Note(
+                            runCatching {
+                                    localDay(java.time.LocalDate.parse(day.removePrefix("mood.")))
+                                }
+                                .getOrDefault(day.removePrefix("mood.")) + "   ·   " + mood
+                        )
                     }
             }
             Panel {
                 Title("Privacy", 20)
                 Note(
-                    "Pages and imported media stay on this device. Opening the map connects to OpenFreeMap to load the area you view. Places are chosen by hand."
+                    "Pages and imported media stay on this device. Opening the map connects to OpenFreeMap to load the area you view. Place search sends your submitted query to the device geocoder. GPS is used once when you request it."
                 )
             }
             BackupControls(book)
             Panel {
                 Title("About Pageheld", 20)
                 Note("A personal journal for everyday writing and memories.")
+                Note("몽글동심 handwriting © 2022 VoyagerX and Song Sumin.")
             }
         }
     }

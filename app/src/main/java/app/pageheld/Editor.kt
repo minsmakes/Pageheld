@@ -94,36 +94,48 @@ fun Appearance(
     setting: (String, String) -> Unit,
 ) {
     Title("Paper styles", 21)
-    Row(
-        Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        papers.forEach { name ->
-            Column(
-                Modifier.clickable { setPaper(name) },
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    Modifier.size(60.dp, 80.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .paper(name, interval = 8.dp, margin = if (name == "Letter") 9.dp else 0.dp)
-                        .border(
-                            if (name == paper) 2.dp else .7.dp,
-                            if (name == paper) sage else edge,
-                            RoundedCornerShape(8.dp),
-                        )
-                ) {
-                    if (name == paper) Glyph("check", "Selected", sage, 17)
-                    if (name == "Letter")
-                        Text(
-                            "Dear me,",
-                            Modifier.padding(7.dp),
-                            fontFamily = serif,
-                            fontSize = 9.sp,
-                        )
-                    if (name == "Scrapbook") Glyph("image", tint = sage)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = if (maxWidth >= 410.dp) 6 else 3
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            papers.chunked(columns).forEach { group ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    group.forEach { name ->
+                        Column(
+                            Modifier.weight(1f).clickable { setPaper(name) },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .height(67.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .paper(
+                                        name,
+                                        interval = 8.dp,
+                                        margin = if (name == "Letter") 9.dp else 0.dp,
+                                    )
+                                    .border(
+                                        if (name == paper) 2.dp else .7.dp,
+                                        if (name == paper) sage else edge,
+                                        RoundedCornerShape(8.dp),
+                                    )
+                            ) {
+                                if (name == paper)
+                                    Box(Modifier.padding(3.dp)) {
+                                        Glyph("check", "Selected", sage, 17)
+                                    }
+                                if (name == "Letter")
+                                    Text(
+                                        "Dear me,",
+                                        Modifier.padding(7.dp),
+                                        fontFamily = LocalDisplayFont.current,
+                                        fontSize = uiSp(9),
+                                    )
+                                if (name == "Scrapbook") Glyph("image", tint = sage)
+                            }
+                            Text(name, fontSize = uiSp(12))
+                        }
+                    }
                 }
-                Text(name, fontSize = 12.sp)
             }
         }
     }
@@ -146,13 +158,12 @@ fun Appearance(
         }
     }
     listOf(
-            Triple("Font", "font", listOf("Handwriting", "Serif", "Sans")),
             Triple("Line spacing", "spacing", listOf("Classic", "Close", "Airy")),
             Triple("Margins", "margin", listOf("Classic", "Narrow", "Wide")),
         )
         .forEach { (label, key, choices) ->
             Title(label, 18)
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 choices.forEach {
                     Tag(it, it == (settings[key] ?: choices.first())) { setting(key, it) }
                 }
@@ -167,6 +178,9 @@ fun Editor(
     book: Notebook,
     chapters: List<Chapter>,
     settings: Map<String, String>,
+    locations: List<DiaryLocation>,
+    previous: (() -> Unit)?,
+    next: (() -> Unit)?,
     back: () -> Unit,
 ) {
     var page by remember(initial.id) { mutableStateOf(initial) }
@@ -231,12 +245,14 @@ fun Editor(
     }
     val paper = page.paper.ifBlank { settings["paper"] ?: "Ruled" }
     val color = swatches.getOrElse(settings["tone"]?.toIntOrNull() ?: 0) { ivory }
+    val bodySize = writingSize(settings)
+    val titleSize = (bodySize + 6).sp
     val line =
         when (settings["spacing"]) {
             "Close" -> 27
             "Airy" -> 38
             else -> 32
-        }.sp
+        }.let { (it * bodySize / 20f).sp }
     val density = LocalDensity.current
     var measured by remember(line, density) { mutableFloatStateOf(0f) }
     val interval = with(density) { if (measured > 0f) measured.toDp() else line.toDp() }
@@ -246,12 +262,7 @@ fun Editor(
             "Wide" -> 40
             else -> 25
         }.dp
-    val font =
-        when (settings["font"]) {
-            "Sans" -> FontFamily.SansSerif
-            "Serif" -> serif
-            else -> FontFamily(Font(R.font.kalam))
-        }
+    val font = notebookFont(book.context, settings["font"])
     var bodyY by remember { mutableFloatStateOf(0f) }
     var baseline by remember { mutableFloatStateOf(0f) }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -262,6 +273,14 @@ fun Editor(
     androidx.activity.compose.BackHandler { if (!importing) back() }
     Column(Modifier.fillMaxSize().background(color)) {
         Header("", { Action("arrow-left", "Close page", !importing, back) }) {
+            if (previous != null || next != null) {
+                Box(Modifier.graphicsLayer { scaleX = -1f }) {
+                    Action("chevron-right", "Previous page", previous != null && !importing) {
+                        previous?.invoke()
+                    }
+                }
+                Action("chevron-right", "Next page", next != null && !importing) { next?.invoke() }
+            }
             Action("undo-2", "Undo", past.isNotEmpty()) {
                 future.add(page.title to page.body)
                 val p = past.removeAt(past.lastIndex)
@@ -285,11 +304,16 @@ fun Editor(
                         color,
                         interval,
                         margin,
-                        bodyY + baseline + with(density) { 3.dp.toPx() },
+                        bodyY + baseline + with(density) { 2.dp.toPx() },
                     )
             ) {
                 Column(Modifier.padding(start = margin + 12.dp, end = 18.dp, top = 18.dp)) {
-                    Note(stamp(page.created, "EEE, d MMM yyyy  ·  HH:mm"))
+                    Note(
+                        stamp(page.created, "yMMMEd") +
+                            "  ·  " +
+                            android.text.format.DateFormat.getTimeFormat(book.context)
+                                .format(java.util.Date(page.created))
+                    )
                     Spacer(Modifier.height(24.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         BasicTextField(
@@ -299,7 +323,13 @@ fun Editor(
                                 .widthIn(min = 130.dp, max = 245.dp)
                                 .weight(1f, fill = false)
                                 .semantics { contentDescription = "Page title" },
-                            textStyle = TextStyle(fontFamily = font, fontSize = 35.sp, color = ink),
+                            textStyle =
+                                TextStyle(
+                                    fontSynthesis = FontSynthesis.None,
+                                    fontFamily = font,
+                                    fontSize = titleSize,
+                                    color = ink,
+                                ),
                             singleLine = true,
                             cursorBrush = SolidColor(sage),
                             decorationBox = { inner ->
@@ -309,7 +339,7 @@ fun Editor(
                                             "Untitled page",
                                             maxLines = 1,
                                             color = muted,
-                                            fontSize = 35.sp,
+                                            fontSize = titleSize,
                                             fontFamily = font,
                                         )
                                     inner()
@@ -324,22 +354,32 @@ fun Editor(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Tag(page.mood.ifBlank { "Mood" }, icon = "smile") { tools("Mood") }
-                        Tag(page.place.ifBlank { "Place" }, icon = "map-pin") { tools("Place") }
+                        Tag(
+                            when (locations.size) {
+                                0 -> "Places"
+                                1 -> locations.first().label()
+                                else -> "${locations.size} places"
+                            },
+                            icon = "map-pin",
+                        ) {
+                            tools("Place")
+                        }
                     }
                 }
-                Spacer(Modifier.height(33.dp))
+                Spacer(Modifier.height(18.dp))
                 BasicTextField(
                     page.body,
                     { change(page.copy(body = it), true) },
                     Modifier.fillMaxWidth()
-                        .onPlaced { bodyY = it.positionInParent().y }
+                        .onGloballyPositioned { bodyY = it.positionInParent().y }
                         .padding(start = margin + 10.dp, end = 18.dp)
                         .heightIn(min = interval * 8)
                         .semantics { contentDescription = "Page body" },
                     textStyle =
                         TextStyle(
                             fontFamily = font,
-                            fontSize = 21.sp,
+                            fontSynthesis = FontSynthesis.None,
+                            fontSize = bodySize.sp,
                             lineHeight = line,
                             color = ink,
                             lineHeightStyle =
@@ -350,8 +390,9 @@ fun Editor(
                         ),
                     onTextLayout = {
                         baseline = it.getLineBaseline(0)
-                        if (it.lineCount > 1)
-                            measured = it.getLineBaseline(1) - it.getLineBaseline(0)
+                        measured =
+                            if (it.lineCount > 1) it.getLineBaseline(1) - it.getLineBaseline(0)
+                            else 0f
                     },
                     cursorBrush = SolidColor(sage),
                     decorationBox = { inner ->
@@ -361,7 +402,7 @@ fun Editor(
                                     "Begin your page…",
                                     color = muted,
                                     fontFamily = font,
-                                    fontSize = 21.sp,
+                                    fontSize = bodySize.sp,
                                     lineHeight = line,
                                 )
                             inner()
@@ -418,7 +459,8 @@ fun Editor(
             Action("notebook", "Template and chapter") { tools("Organize page") }
         }
     }
-    if (sheet.isNotEmpty())
+    if (sheet == "Place") LocationNotebook(page, book, locations) { sheet = "" }
+    else if (sheet.isNotEmpty())
         ModalBottomSheet(
             onDismissRequest = { sheet = "" },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -432,24 +474,21 @@ fun Editor(
             ) {
                 Title(sheet, 25)
                 when (sheet) {
-                    "Appearance" ->
+                    "Appearance" -> {
+                        FontOptions(book, settings, includeDisplay = false)
                         Appearance(
                             settings,
                             paper,
                             { change(page.copy(paper = it)) },
                             book::setting,
                         )
+                    }
                     "Mood" ->
                         (moods + "Clear mood").forEach {
                             Tag(it, it == page.mood) {
                                 change(page.copy(mood = if (it == "Clear mood") "" else it))
                                 sheet = ""
                             }
-                        }
-                    "Place" ->
-                        PlaceEditor(page) { name, lat, lon ->
-                            change(page.copy(place = name, lat = lat, lon = lon))
-                            sheet = ""
                         }
                     "Organize page" -> {
                         Title("Entry template", 19)
@@ -503,9 +542,9 @@ fun Editor(
                                     Spacer(Modifier.height(10.dp))
                                     Text(
                                         name,
-                                        fontFamily = serif,
+                                        fontFamily = LocalDisplayFont.current,
                                         textAlign = TextAlign.Center,
-                                        lineHeight = 18.sp,
+                                        lineHeight = uiSp(18),
                                     )
                                 }
                             }

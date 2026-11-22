@@ -29,7 +29,14 @@ fun uid() = UUID.randomUUID().toString()
 
 fun date(ms: Long) = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())
 
-fun stamp(ms: Long, pattern: String) = date(ms).format(DateTimeFormatter.ofPattern(pattern))
+fun stamp(ms: Long, skeleton: String): String {
+    val locale = java.util.Locale.getDefault()
+    val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton)
+    return date(ms).format(DateTimeFormatter.ofPattern(pattern, locale))
+}
+
+fun localDay(day: LocalDate) =
+    stamp(day.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(), "yMMMd")
 
 @Entity
 data class Page(
@@ -63,11 +70,92 @@ data class Chapter(
     val position: Long = System.currentTimeMillis(),
 )
 
+@Entity(
+    foreignKeys =
+        [
+            ForeignKey(
+                entity = Page::class,
+                parentColumns = ["id"],
+                childColumns = ["pageId"],
+                onDelete = ForeignKey.CASCADE,
+            )
+        ],
+    indices = [Index(value = ["pageId", "position"])],
+)
+data class DiaryLocation(
+    @PrimaryKey val id: String = uid(),
+    val pageId: String,
+    val position: Int,
+    val name: String = "",
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val visited: Long? = null,
+    val notes: String = "",
+    val media: String = "",
+) {
+    fun label() = name.ifBlank { "Pinned place" }
+}
+
+val locationMigration =
+    object : androidx.room.migration.Migration(1, 2) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL(
+                """CREATE TABLE DiaryLocation (id TEXT NOT NULL PRIMARY KEY, pageId TEXT NOT NULL,
+            position INTEGER NOT NULL, name TEXT NOT NULL, lat REAL, lon REAL, visited INTEGER,
+            notes TEXT NOT NULL, media TEXT NOT NULL, FOREIGN KEY(pageId) REFERENCES Page(id) ON UPDATE NO ACTION ON DELETE CASCADE)"""
+            )
+            db.execSQL(
+                "CREATE INDEX index_DiaryLocation_pageId_position ON DiaryLocation(pageId,position)"
+            )
+            db.execSQL(
+                """INSERT INTO DiaryLocation SELECT id,id,0,place,lat,lon,NULL,'',media FROM Page
+            WHERE trim(place) != '' OR (lat IS NOT NULL AND lon IS NOT NULL)"""
+            )
+        }
+    }
+
 @Dao
 interface JournalDao {
     @Query("SELECT * FROM Page ORDER BY created DESC") fun pages(): Flow<List<Page>>
 
     @Query("SELECT * FROM Chapter ORDER BY position, id") fun chapters(): Flow<List<Chapter>>
+
+    @Query("SELECT * FROM DiaryLocation ORDER BY pageId, position, id")
+    fun locations(): Flow<List<DiaryLocation>>
+
+    @Query("SELECT * FROM DiaryLocation WHERE pageId=:pageId ORDER BY position,id")
+    suspend fun locationsFor(pageId: String): List<DiaryLocation>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun ensurePage(page: Page): Long
+
+    @Upsert suspend fun writeLocation(location: DiaryLocation)
+
+    @Query("DELETE FROM DiaryLocation WHERE pageId=:pageId AND id=:id")
+    suspend fun removeLocation(pageId: String, id: String)
+
+    @Query("UPDATE Page SET starred=:value WHERE id=:id")
+    suspend fun bookmark(id: String, value: Boolean)
+
+    @Transaction
+    suspend fun saveLocation(page: Page, location: DiaryLocation) {
+        require(location.pageId == page.id)
+        ensurePage(page)
+        val places = locationsFor(page.id)
+        val order =
+            places.find { it.id == location.id }?.position
+                ?: ((places.lastOrNull()?.position ?: -1) + 1)
+        writeLocation(location.copy(position = order))
+    }
+
+    @Transaction
+    suspend fun moveLocation(pageId: String, id: String, delta: Int) {
+        val places = locationsFor(pageId)
+        val i = places.indexOfFirst { it.id == id }
+        if (i < 0 || i + delta !in places.indices) return
+        val other = places[i + delta]
+        writeLocation(places[i].copy(position = other.position))
+        writeLocation(other.copy(position = places[i].position))
+    }
 
     @Upsert suspend fun save(page: Page)
 
@@ -92,7 +180,11 @@ interface JournalDao {
     }
 }
 
-@Database(entities = [Page::class, Chapter::class], version = 1, exportSchema = false)
+@Database(
+    entities = [Page::class, Chapter::class, DiaryLocation::class],
+    version = 2,
+    exportSchema = false,
+)
 abstract class NotebookDb : RoomDatabase() {
     abstract fun journal(): JournalDao
 }
@@ -103,7 +195,9 @@ class Notebook
 internal constructor(
     val context: Context,
     val db: NotebookDb =
-        Room.databaseBuilder(context, NotebookDb::class.java, "pageheld.db").build(),
+        Room.databaseBuilder(context, NotebookDb::class.java, "pageheld.db")
+            .addMigrations(locationMigration)
+            .build(),
 ) {
     val dao = db.journal()
     val settings =

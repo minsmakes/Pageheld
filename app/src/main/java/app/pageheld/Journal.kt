@@ -23,7 +23,7 @@ import java.time.*
 fun EntryRow(p: Page, book: Notebook, open: (Page) -> Unit, menu: Boolean = false) {
     var expanded by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().clickable { open(p) }.padding(vertical = if (menu) 16.dp else 6.dp),
+        Modifier.fillMaxWidth().clickable { open(p) }.padding(vertical = if (menu) 12.dp else 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val thumb = if (menu) Modifier.size(94.dp, 104.dp) else Modifier.size(71.dp, 62.dp)
@@ -42,18 +42,18 @@ fun EntryRow(p: Page, book: Notebook, open: (Page) -> Unit, menu: Boolean = fals
         Column(Modifier.weight(1f)) {
             Text(
                 p.heading(),
-                fontFamily = serif,
+                fontFamily = LocalDisplayFont.current,
                 color = ink,
-                fontSize = 19.sp,
+                fontSize = uiSp(17),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Note(stamp(p.created, "d MMM yyyy"))
+            Note(stamp(p.created, "yMMMd"))
             Spacer(Modifier.height(3.dp))
             Text(
                 p.body.ifBlank { p.template },
-                fontSize = 14.sp,
-                lineHeight = 19.sp,
+                fontSize = uiSp(14),
+                lineHeight = uiSp(19),
                 maxLines = 2,
                 color = muted,
                 overflow = TextOverflow.Ellipsis,
@@ -74,7 +74,7 @@ fun EntryRow(p: Page, book: Notebook, open: (Page) -> Unit, menu: Boolean = fals
                         text = { Text(if (p.starred) "Remove bookmark" else "Bookmark") },
                         onClick = {
                             expanded = false
-                            book.save(p.copy(starred = !p.starred))
+                            book.queue { book.dao.bookmark(p.id, !p.starred) }
                         },
                     )
                 }
@@ -88,7 +88,6 @@ fun Today(
     pages: List<Page>,
     prefs: Map<String, String>,
     open: (Page) -> Unit,
-    menu: () -> Unit,
     bookmarks: () -> Unit,
     checkIn: () -> Unit,
 ) {
@@ -100,7 +99,7 @@ fun Today(
             d.year < day.year && MonthDay.from(d) == MonthDay.from(day)
         }
     Column {
-        Header("pageheld.", { Action("menu", "Navigation menu", click = menu) }) {
+        Header(PAGEHELD_WORDMARK) {
             Action("bookmark", "Bookmarked pages", click = bookmarks)
             Action("bell", "Daily check-in", click = checkIn)
         }
@@ -117,9 +116,9 @@ fun Today(
                             else -> "Good evening,"
                         }
                     )
-                    Title("Your day, your story.", 30, true)
+                    Title("Your day, your story.", 27, true)
                     Spacer(Modifier.height(5.dp))
-                    Title(stamp(now, "EEE, d MMM yyyy"), 17)
+                    Title(stamp(now, "yMMMEd"), 17)
                 }
             }
             item {
@@ -192,7 +191,7 @@ fun Today(
                             Note(
                                 if (anniversary == null)
                                     "Past pages from this date will appear here."
-                                else "A memory from " + stamp(anniversary.created, "d MMM yyyy")
+                                else "A memory from " + stamp(anniversary.created, "yMMMd")
                             )
                         }
                         if (anniversary != null) Glyph("chevron-right", size = 18)
@@ -211,9 +210,10 @@ fun Today(
 fun Journal(
     book: Notebook,
     pages: List<Page>,
+    locations: List<DiaryLocation>,
     bookmarks: Boolean,
     clear: () -> Unit,
-    open: (Page) -> Unit,
+    open: (Page, List<Page>) -> Unit,
 ) {
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -226,7 +226,8 @@ fun Journal(
                 (filter == "All" ||
                     (filter == "Diary" && p.template in listOf("Daily Diary", "Free Writing")) ||
                     filter == p.template) &&
-                (p.title + " " + p.body + " " + p.place).contains(query, true) &&
+                ((p.title + " " + p.body).contains(query, true) ||
+                    locations.any { it.pageId == p.id && it.name.contains(query, true) }) &&
                 (selectedDate.isBlank() || date(p.created).toLocalDate().toString() == selectedDate)
         }
     Column {
@@ -265,7 +266,8 @@ fun Journal(
             }
         }
         if (bookmarks) Tag("Bookmarks ×", true, click = clear)
-        if (selectedDate.isNotBlank()) Tag(selectedDate + " ×", true) { selectedDate = "" }
+        if (selectedDate.isNotBlank())
+            Tag(localDay(LocalDate.parse(selectedDate)) + " ×", true) { selectedDate = "" }
         LazyColumn(
             contentPadding = PaddingValues(start = 17.dp, end = 14.dp, top = 6.dp, bottom = 84.dp)
         ) {
@@ -278,11 +280,11 @@ fun Journal(
                     )
                 }
             found
-                .groupBy { stamp(it.created, "MMMM yyyy") }
+                .groupBy { stamp(it.created, "yMMMM") }
                 .forEach { (month, entries) ->
                     item { Box(Modifier.padding(vertical = 12.dp)) { Title(month, 19) } }
                     items(entries, key = { it.id }) {
-                        EntryRow(it, book, open, true)
+                        EntryRow(it, book, { page -> open(page, found) }, true)
                         HorizontalDivider(color = edge, thickness = .6.dp)
                     }
                 }

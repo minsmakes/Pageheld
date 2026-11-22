@@ -36,7 +36,7 @@ private fun archiveCipher(password: String, salt: ByteArray): com.google.crypto.
     }
 }
 
-private fun Page.json() =
+private fun Page.json(locations: List<DiaryLocation>) =
     JSONObject()
         .put("id", id)
         .put("created", created)
@@ -45,12 +45,27 @@ private fun Page.json() =
         .put("template", template)
         .put("paper", paper)
         .put("mood", mood)
-        .put("place", place)
-        .put("lat", lat)
-        .put("lon", lon)
+        .put("place", locations.firstOrNull()?.name.orEmpty())
+        .put("lat", locations.firstOrNull()?.lat)
+        .put("lon", locations.firstOrNull()?.lon)
         .put("chapter", chapter)
         .put("media", media)
         .put("starred", starred)
+        .put(
+            "locations",
+            JSONArray(
+                locations.map { l ->
+                    JSONObject()
+                        .put("id", l.id)
+                        .put("name", l.name)
+                        .put("lat", l.lat)
+                        .put("lon", l.lon)
+                        .put("visited", l.visited)
+                        .put("notes", l.notes)
+                        .put("media", l.media)
+                }
+            ),
+        )
 
 private fun JSONObject.page() =
     Page(
@@ -70,11 +85,17 @@ private fun JSONObject.page() =
     )
 
 internal suspend fun backup(book: Notebook, uri: Uri, password: String) {
-    val pages = book.dao.pages().first()
-    val chapters = book.dao.chapters().first()
+    val (pages, chapters, locations) =
+        book.db.withTransaction {
+            Triple(
+                book.dao.pages().first(),
+                book.dao.chapters().first(),
+                book.dao.locations().first().groupBy { it.pageId },
+            )
+        }
     val manifest =
         JSONObject()
-            .put("pages", JSONArray(pages.map { it.json() }))
+            .put("pages", JSONArray(pages.map { it.json(locations[it.id].orEmpty()) }))
             .put(
                 "chapters",
                 JSONArray(
@@ -179,7 +200,8 @@ internal suspend fun restore(book: Notebook, uri: Uri, password: String) {
                     )
             }
             for (i in 0 until pageArray.length()) {
-                val p = pageArray.getJSONObject(i).page()
+                val row = pageArray.getJSONObject(i)
+                val p = row.page()
                 if (p.id in existing) continue
                 val names =
                     p.files().map { name ->
@@ -197,6 +219,40 @@ internal suspend fun restore(book: Notebook, uri: Uri, password: String) {
                         chapter = p.chapter?.takeIf { it in chapterIds },
                     )
                 )
+                val remap = p.files().zip(names).toMap()
+                val places = row.optJSONArray("locations")
+                if (places != null) {
+                    for (index in 0 until places.length()) {
+                        val v = places.getJSONObject(index)
+                        val linked =
+                            v.optString("media").lines().filter(String::isNotBlank).map {
+                                remap.getValue(it)
+                            }
+                        book.dao.writeLocation(
+                            DiaryLocation(
+                                pageId = p.id,
+                                position = index,
+                                name = v.getString("name"),
+                                lat = if (v.has("lat")) v.getDouble("lat") else null,
+                                lon = if (v.has("lon")) v.getDouble("lon") else null,
+                                visited = if (v.has("visited")) v.getLong("visited") else null,
+                                notes = v.optString("notes"),
+                                media = linked.joinToString("\n"),
+                            )
+                        )
+                    }
+                } else if (p.place.isNotBlank() || (p.lat != null && p.lon != null)) {
+                    book.dao.writeLocation(
+                        DiaryLocation(
+                            pageId = p.id,
+                            position = 0,
+                            name = p.place,
+                            lat = p.lat,
+                            lon = p.lon,
+                            media = names.joinToString("\n"),
+                        )
+                    )
+                }
             }
         }
         moved.clear()
@@ -205,8 +261,19 @@ internal suspend fun restore(book: Notebook, uri: Uri, password: String) {
                 s.keys()
                     .asSequence()
                     .filter {
-                        it in listOf("paper", "tone", "font", "spacing", "margin") ||
-                            Regex("mood[.][0-9]{4}-[0-9]{2}-[0-9]{2}").matches(it)
+                        it in
+                            listOf(
+                                "paper",
+                                "tone",
+                                "font",
+                                "spacing",
+                                "margin",
+                                "openingCover",
+                                "reduceMotion",
+                                "writingSize",
+                                "displaySize",
+                                "displayFont",
+                            ) || Regex("mood[.][0-9]{4}-[0-9]{2}-[0-9]{2}").matches(it)
                     }
                     .associateWith { s.getString(it) }
             book.applySettings(settings)

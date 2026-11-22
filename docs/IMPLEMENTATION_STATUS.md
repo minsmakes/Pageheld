@@ -9,7 +9,7 @@ The app opens to Today with a five-tab navigation bar. Its separate full-screen 
 | Today | Time-dependent greeting, date, new page, daily mood, bookmarks, anniversary lookup across prior years, recent entries |
 | Journal | Monthly grouping, title/body/place search, day picker, diary/memory/gratitude filters, bookmarks, open and delete |
 | Editor | Editable title and multi-paragraph body, measured text baselines, scrolling, native selection, six paper styles, seven templates, three fonts, five colors, spacing and margin choices |
-| Memories | Interactive MapLibre map, manual pin or place name, photo markers, place preview, grouped saved entries, search, attachment filter and local list |
+| Memories | Interactive MapLibre map, ordered per-page places with manual pins or one-time foreground GPS, photo markers, place preview, grouped saved entries, search, attachment filter and local list |
 | Chapters | Four original programmatically drawn cover designs, create, rename, change cover, move up/down, associate pages, real counts and delete while retaining pages |
 | You | Writing defaults, recent daily check-ins, privacy information and portable encrypted export/import through the Android document picker |
 
@@ -17,7 +17,7 @@ The editor stores a paper-style override per page. Color, font, spacing and marg
 
 ## Storage and backup
 
-Room owns the journal database. DataStore owns preferences. Imported media lives in the application's private files directory. The app requests Internet access for the map and has no location, broad media-library or background tracking permission.
+Room owns the journal database. DataStore owns preferences. Imported media lives in the application's private files directory. The app requests Internet access for the map and requests foreground location access only for a user-initiated fix. It does not request broad media-library access or background location.
 
 Backups include pages, chapters, media, appearance and mood history. A fresh random salt and PBKDF2-HMAC-SHA256 derive key material from the passphrase. Tink streaming AES-GCM-HKDF protects the archive. Restore authenticates the archive before extracting or updating Room, validates archive member names, and inserts journal records in a transaction. Existing IDs are retained on merge. Archive content is limited to 256 MiB with a 32 MiB manifest limit.
 
@@ -45,10 +45,28 @@ Lint reported 0 errors and 9 warnings. The JVM unit-test task reported `NO-SOURC
 adb -s emulator-5580 install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s emulator-5580 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb -s emulator-5580 shell am instrument -w app.pageheld.test/androidx.test.runner.AndroidJUnitRunner
-OK (1 test)
+OK (3 tests)
 ```
 
-The test covers Room chapter deletion retaining pages, encrypted backup and restore with attachment bytes, matching-ID import behavior, incorrect passphrases and authenticated corruption detection. Interactive verification covered multiline entry, switching paper style, force-stop/relaunch, restoring the saved body and paper, Android photo import and full-size viewing, chapter creation, video picker import and playback, applying the Gratitude template, manual place selection, and listing the saved page under its place. With Wi-Fi and mobile data disabled, the local place list opened a saved entry and displayed its private photo. Connectivity was restored afterwards.
+The suite covers zero, one and multiple ordered locations, edit and removal, database reopen, version-1 migration, linked backup media, Room chapter deletion retaining pages, encrypted backup and restore with attachment bytes, matching-ID import behavior, incorrect passphrases and authenticated corruption detection. Interactive verification covered multiline entry, switching paper style, force-stop/relaunch, restoring the saved body and paper, Android photo import and full-size viewing, chapter creation, video picker import and playback, applying the Gratitude template, manual place selection, and listing the saved page under its place. With Wi-Fi and mobile data disabled, the local place list opened a saved entry and displayed its private photo. Connectivity was restored afterwards.
+
+## Location update verification
+
+Room version 2 migrates existing places in place. On the populated emulator the five original page rows and four chapter rows retained their pre-upgrade fingerprint. The three original coordinate pairs appeared as map pins. A temporary entry kept its text and two reordered locations across a cold restart. One location came from a map tap and one from a simulated GPS fix with one-time permission. Tapping its marker opened the matching place and entry. The temporary entry was removed. The Samsung SM-S911B received the debug update in place and launched successfully.
+
+[Journal](design/screenshots/journal-refined-review.png) · [Editor](design/screenshots/editor-refined-review.png) · [Paper styles](design/screenshots/appearance-refined-review.png) · [Memory map](design/screenshots/memories-refined-review.png)
+
+## Search, typography and notebook motion
+
+The picker searches the device geocoder on submission and suggests previously saved coordinates locally while typing. It sends the entered query only. Selecting a result recenters the map. The user may move the pin before confirming. There is no billing configuration or API key. Availability and result quality depend on the device geocoder.
+
+The five bottom tabs handle navigation. Mongmongdays regular is the default writing face, with Kalam, serif and sans alternatives. Libre Caslon Text regular and italic preserve the editorial headings on devices that substitute their own system serif. The opening cover supports horizontal dragging or tapping. The editor header arrows turn pages within a chapter or journal result set. You provides separate opening-cover and reduced-motion switches. Android’s system animation setting is respected.
+
+Five instrumentation tests passed on the emulator, including bilingual editor rendering and geocoder result mapping. A separate capture test ran on the Samsung SM-S911B. The phone was updated in place. During manual verification, submitted searches for Berlin and Brandenburg Gate returned named results with addresses. An adjusted pin and a second saved location survived a cold restart. Offline saved-place suggestions, tap and swipe opening, background return, disabled cover, reduced motion, chapter page turns and paper selection were exercised.
+
+[Phone cover](design/screenshots/phone-notebook-cover.png) · [Phone header](design/screenshots/phone-today-header.png) · [Bilingual editor](design/screenshots/bilingual-notebook.png) · [Location search](design/screenshots/place-search-notebook.png)
+
+Files for this increment include `PlaceSearch.kt`, `Locations.kt`, `Memories.kt`, `BookMotion.kt`, `MainActivity.kt`, `Editor.kt`, `Journal.kt`, `Design.kt`, `Chapters.kt`, `Backup.kt`, the manifest, three font resources and license notices, `NotebookExperienceTest.kt`, `CoverCaptureTest.kt`, the README and these verification captures. The Room schema is unchanged by this increment.
 
 ## Remaining scope
 

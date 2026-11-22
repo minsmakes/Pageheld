@@ -23,15 +23,16 @@ import org.maplibre.android.maps.*
 
 data class Pin(val name: String, val lat: Double, val lon: Double, val photo: String? = null)
 
-fun Page.pin() =
+fun DiaryLocation.pin(): Pin? =
     if (lat != null && lon != null)
-        Pin(place, lat, lon, files().firstOrNull { it.endsWith(".photo") })
+        Pin(label(), lat, lon, media.lines().firstOrNull { it.endsWith(".photo") })
     else null
 
 @Composable
 fun PlacesMap(
     pins: List<Pin>,
     modifier: Modifier,
+    recenter: Int = 0,
     choose: ((Double, Double) -> Unit)? = null,
     select: (Pin) -> Unit = {},
 ) {
@@ -66,12 +67,14 @@ fun PlacesMap(
                     .target(LatLng(first?.lat ?: 52.514, first?.lon ?: 13.354))
                     .zoom(13.0)
                     .build()
-            m.setStyle("https://tiles.openfreemap.org/styles/liberty") { failed = false }
+            m.setStyle("https://tiles.openfreemap.org/styles/liberty") {
+                failed = false
+                map = m
+            }
             m.addOnMapClickListener { point ->
                 onChoose?.invoke(point.latitude, point.longitude)
                 onChoose != null
             }
-            map = m
         }
         onDispose {
             owner.lifecycle.removeObserver(observer)
@@ -79,6 +82,17 @@ fun PlacesMap(
             view.onStop()
             view.onDestroy()
         }
+    }
+    LaunchedEffect(map, recenter) {
+        if (recenter > 0)
+            pins.firstOrNull()?.let { pin ->
+                map?.moveCamera(
+                    org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(
+                        LatLng(pin.lat, pin.lon),
+                        15.0,
+                    )
+                )
+            }
     }
     LaunchedEffect(map, pins) {
         map?.let { m ->
@@ -116,31 +130,12 @@ fun PlacesMap(
 }
 
 @Composable
-fun PlaceEditor(page: Page, save: (String, Double?, Double?) -> Unit) {
-    var name by rememberSaveable { mutableStateOf(page.place) }
-    var lat by rememberSaveable { mutableStateOf(page.lat) }
-    var lon by rememberSaveable { mutableStateOf(page.lon) }
-    OutlinedTextField(name, { name = it }, label = { Text("Place name") }, singleLine = true)
-    Note("Tap the map to drop a pin, or save just the place name.")
-    PlacesMap(
-        if (lat != null && lon != null) listOf(Pin(name, lat!!, lon!!)) else emptyList(),
-        Modifier.fillMaxWidth().height(240.dp),
-        choose = { a, b ->
-            lat = a
-            lon = b
-        },
-    )
-    if (lat != null) Note("%.4f, %.4f".format(lat, lon))
-    Row {
-        Button(onClick = { save(name.trim(), lat, lon) }, enabled = name.isNotBlank()) {
-            Text("Save place")
-        }
-        TextButton(onClick = { save("", null, null) }) { Text("Remove place") }
-    }
-}
-
-@Composable
-fun Memories(book: Notebook, pages: List<Page>, open: (Page) -> Unit) {
+fun Memories(
+    book: Notebook,
+    pages: List<Page>,
+    locations: List<DiaryLocation>,
+    open: (Page) -> Unit,
+) {
     var list by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var q by rememberSaveable { mutableStateOf("") }
@@ -148,14 +143,23 @@ fun Memories(book: Notebook, pages: List<Page>, open: (Page) -> Unit) {
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var photos by rememberSaveable { mutableStateOf(false) }
     var filters by remember { mutableStateOf(false) }
+    val byId = remember(pages) { pages.associateBy { it.id } }
     val found =
-        pages.filter {
-            it.place.isNotBlank() &&
-                (it.place + " " + it.heading()).contains(q, true) &&
-                (!photos || it.media.isNotBlank())
-        }
-    val places = found.groupBy { it.place }
-    val pins = found.mapNotNull { it.pin() }.distinctBy { Triple(it.name, it.lat, it.lon) }
+        locations
+            .filter { location ->
+                val page = byId[location.pageId]
+                page != null &&
+                    (location.label() + " " + location.notes + " " + page.heading()).contains(
+                        q,
+                        true,
+                    ) &&
+                    (!photos || location.media.isNotBlank())
+            }
+            .sortedByDescending { byId[it.pageId]?.created }
+    fun groupKey(location: DiaryLocation) =
+        listOf(location.label(), location.lat, location.lon).joinToString("\u0000")
+    val places = found.groupBy(::groupKey)
+    val pins = places.values.mapNotNull { it.first().pin() }
     val preview = places[selected]?.firstOrNull() ?: found.firstOrNull()
     Column {
         Header("Memories") {
@@ -205,33 +209,48 @@ fun Memories(book: Notebook, pages: List<Page>, open: (Page) -> Unit) {
                 if (scopePlace != null) item { Tag("All saved places") { scopePlace = null } }
                 places
                     .filterKeys { scopePlace == null || it == scopePlace }
-                    .forEach { (name, entries) ->
-                        item { Title(name, 20) }
-                        items(entries, key = { it.id }) { EntryRow(it, book, open) }
+                    .forEach { (key, entries) ->
+                        item { Title(entries.first().label(), 20) }
+                        items(entries.distinctBy { it.pageId }, key = { it.id }) {
+                            byId[it.pageId]?.let { page -> EntryRow(page, book, open) }
+                        }
                     }
             }
         else
             Box(Modifier.fillMaxSize()) {
-                PlacesMap(pins, Modifier.fillMaxSize(), select = { selected = it.name })
+                PlacesMap(
+                    pins,
+                    Modifier.fillMaxSize(),
+                    select = { pin ->
+                        selected =
+                            found
+                                .firstOrNull {
+                                    it.label() == pin.name && it.lat == pin.lat && it.lon == pin.lon
+                                }
+                                ?.let(::groupKey)
+                    },
+                )
                 Box(
                     Modifier.align(Alignment.BottomCenter)
                         .padding(start = 12.dp, end = 12.dp, bottom = 35.dp)
                 ) {
                     Panel(
                         Modifier.clickable {
-                            scopePlace = preview?.place
+                            scopePlace = preview?.let(::groupKey)
                             list = true
                         }
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            val photo = preview?.files()?.firstOrNull()
+                            val photo = preview?.media?.lines()?.firstOrNull { it.isNotBlank() }
                             if (photo != null)
                                 Thumbnail(File(mediaDir(book), photo), Modifier.size(62.dp))
                             else Glyph("map-pin", tint = sage)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Title(preview?.place ?: "Saved places", 19)
-                                val count = places[preview?.place]?.size ?: 0
+                                Title(preview?.label() ?: "Saved places", 19)
+                                val count =
+                                    places[preview?.let(::groupKey)]?.distinctBy { it.pageId }?.size
+                                        ?: 0
                                 Note(
                                     if (count == 0) "Add a place to a page to remember it here."
                                     else "$count " + if (count == 1) "memory" else "memories"
