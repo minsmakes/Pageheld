@@ -2,17 +2,18 @@
 
 <img src="docs/readme/pageheld-icon.png" alt="Pageheld app icon" width="112">
 
-[![Download Pageheld for Android](docs/readme/download-android.svg)](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk)
+[![Download phone edition](docs/readme/download-android.svg)](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk)
+[![Download tablet edition](docs/readme/download-tablet.svg)](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk)
 
-Version 1.4 · Android 9 or newer · [Direct APK link](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk)
+Version 1.5 · Android 9 or newer · [Phone APK](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk) · [Tablet APK](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk)
 
 Pageheld is a personal journal for Android. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
 
-## Install on your phone
+## Install on your Android device
 
-1. On your Android phone, tap **Download Pageheld for Android** above. The file is called **Pageheld.apk**. An APK is an Android app installer.
+1. Choose **Download for phone** (Pageheld.apk) or **Download for tablet** (Pageheld-Tablet.apk). An APK is an Android app installer.
 2. Your browser may warn you about downloading an app file. Check that you followed the Pageheld link above before choosing **Download** or **Keep**.
-3. Tap the finished download, or find **Pageheld.apk** in **Files → Downloads**. Pageheld comes from GitHub, outside Google Play. If Android asks for permission, tap **Settings**, enable **Allow from this source** for the browser or Files app that opened the download, then go back.
+3. Tap the finished download, or find the downloaded APK in **Files → Downloads**. Pageheld comes from GitHub, outside Google Play. If Android asks for permission, tap **Settings**, enable **Allow from this source** for the browser or Files app that opened the download, then go back.
 4. Tap **Install**, then **Open**. Keep Google Play Protect enabled and allow it to scan the app if asked. If it flags the app as harmful, stop the installation.
 5. After installing, search your phone’s Settings for **Install unknown apps**, select the same browser or Files app, and turn **Allow from this source** off again. The wording varies by phone. [Android installation help](https://support.google.com/android/answer/9457058)
 
@@ -30,17 +31,25 @@ For a new version, use the same download link and tap **Update**. Android keeps 
 
 If you already use a development build, Android may report a signature conflict. Keep that copy installed while you export your notebook and check that you have the backup file and passphrase. Uninstalling Pageheld erases the journal stored on the device.
 
-![Five Pageheld screens captured from the Android emulator](docs/design/screenshots/overview.png)
+## Phone edition
+
+![Phone cover, Today and writing page](docs/design/screenshots/overview.png)
+
+## Tablet edition
+
+On a wide tablet such as the Galaxy Tab S8 Ultra, turn the device sideways to open a two-page spread. Tap a title in the left-hand index to write on the right. While editing, the facing page shows the previous entry when available. In a narrow window, the editor uses the full page.
+
+![Tablet cover and open diary with facing pages in landscape](docs/design/screenshots/tablet/overview.png)
 
 ## Build from source
 
 Open the repository root in Android Studio. Use JDK 21, install Android SDK Platform 37, sync Gradle, and run the `app` configuration on Android 9 (API 28) or later. On Windows with the SDK and JDK configured, build the debug APK with:
 
 ```powershell
-.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :app:assemblePhoneDebug :app:assembleTabletDebug
 ```
 
-The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. A fresh installation opens an empty journal. The pages, places and chapters in the screenshots are review fixtures from a dedicated emulator.
+The debug installers are under `app/build/outputs/apk/phone/debug/` and `app/build/outputs/apk/tablet/debug/`. A fresh installation opens an empty journal. The pages, places and chapters in the screenshots are review fixtures from a dedicated emulator.
 
 ## Using the notebook
 

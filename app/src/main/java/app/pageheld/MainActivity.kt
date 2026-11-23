@@ -117,12 +117,12 @@ private fun NotebookScreens(
         Modifier.fillMaxSize().background(ivory),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Box(
+        NotebookSpread(
+            pages, editor, ::open,
             Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .imePadding()
                 .then(if (showCover) Modifier.clearAndSetSemantics {} else Modifier),
-            contentAlignment = Alignment.TopCenter,
         ) {
             if (data == null || locations == null || preferences == null)
                 CircularProgressIndicator()

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="234" height="48" viewBox="0 0 234 48">
+  <rect width="234" height="48" rx="8" fill="#3F563C"/>
+  <path d="M26 13v14m-6-6 6 6 6-6m-13 9v5h14v-5" fill="none" stroke="#FFFDF5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="46" y="30" fill="#FFFDF5" font-family="Arial, sans-serif" font-size="17" font-weight="700">Download for tablet</text>
+</svg>

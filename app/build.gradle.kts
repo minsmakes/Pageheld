@@ -10,11 +10,19 @@ android {
         applicationId = "app.pageheld"
         minSdk = 28
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.4"
+        versionCode = 5
+        versionName = "1.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildFeatures { compose = true }
+    flavorDimensions += "edition"
+    productFlavors {
+        create("phone") { dimension = "edition" }
+        create("tablet") { dimension = "edition" }
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 dependencies {
     implementation("com.google.crypto.tink:tink-android:1.18.0")

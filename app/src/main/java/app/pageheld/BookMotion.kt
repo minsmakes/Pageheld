@@ -200,32 +200,7 @@ internal fun BookCover(motion: Boolean, onOpen: () -> Unit) {
                         androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
                         style = Stroke(.7.dp.toPx()),
                     )
-                    val ribbonStart = w * .70f
-                    val ribbonWidth = w * .075f
-                    val ribbonEnd = ribbonStart + ribbonWidth
-                    val tip = maxOf(topInset + 46.dp.toPx(), h * .186f)
-                    val ribbon = Path().apply {
-                        moveTo(ribbonStart, 0f)
-                        lineTo(ribbonEnd, 0f)
-                        lineTo(ribbonEnd, tip)
-                        lineTo(ribbonStart + ribbonWidth / 2, tip - ribbonWidth * .45f)
-                        lineTo(ribbonStart, tip)
-                        close()
-                    }
-                    drawPath(ribbon, ink.copy(alpha = .17f), style = Stroke(1.6.dp.toPx()))
-                    drawPath(ribbon, Brush.horizontalGradient(
-                        0f to Color(0xff8e7357),
-                        .17f to Color(0xffa98c66),
-                        .52f to Color(0xffaf9470),
-                        .89f to Color(0xff9e815d),
-                        1f to Color(0xff8c7053),
-                        startX = ribbonStart,
-                        endX = ribbonEnd,
-                    ))
-                    drawPath(ribbon, Brush.verticalGradient(
-                        listOf(Color(0xff523e2b).copy(alpha = .25f), Color.Transparent),
-                        endY = 24.dp.toPx(),
-                    ))
+
                 }
                 .drawWithContent {
                     drawContent()
