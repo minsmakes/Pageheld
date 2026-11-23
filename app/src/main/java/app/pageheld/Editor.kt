@@ -184,19 +184,29 @@ fun Editor(
     back: () -> Unit,
 ) {
     var page by remember(initial.id) { mutableStateOf(initial) }
+    var dragHintDismissed by rememberSaveable { mutableStateOf(false) }
     val past = remember { mutableStateListOf<Pair<String, String>>() }
     val future = remember { mutableStateListOf<Pair<String, String>>() }
+    fun dismissDragHint() {
+        if (dragHintDismissed || settings["attachmentDragHintSeen"] == "true") return
+        dragHintDismissed = true
+        book.setting("attachmentDragHintSeen", "true")
+    }
     fun change(next: Page, record: Boolean = false) {
         if (record) {
             past.add(page.title to page.body)
             if (past.size > 60) past.removeAt(0)
             future.clear()
         }
+        if (page.media.isNotBlank() && (next.title != page.title || next.body != page.body)) {
+            dismissDragHint()
+        }
         page = next
         book.save(next)
     }
     var sheet by rememberSaveable { mutableStateOf("") }
     var viewing by rememberSaveable { mutableStateOf("") }
+    var removing by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var importing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -305,8 +315,10 @@ fun Editor(
                     book,
                     minimum,
                     scroll,
+                    showDragHint = !dragHintDismissed && settings["attachmentDragHintSeen"] != "true",
                     view = { viewing = it },
                     place = { name, position ->
+                        if (position != null) dismissDragHint()
                         change(page.copy(mediaPositions = page.withMediaPosition(name, position)))
                     },
                 ) {
@@ -540,7 +552,7 @@ fun Editor(
                 }
             }
         }
-    if (viewing.isNotBlank())
+    if (viewing.isNotBlank() && viewing in page.files())
         Dialog(onDismissRequest = { viewing = "" }) {
             Column(Modifier.background(ivory, round).padding(12.dp)) {
                 val file = File(mediaDir(book), viewing)
@@ -560,9 +572,39 @@ fun Editor(
                         modifier = Modifier.fillMaxWidth().height(320.dp),
                     )
                 else Thumbnail(file, Modifier.fillMaxWidth().height(360.dp), true)
-                TextButton(onClick = { viewing = "" }) { Text("Close") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = {
+                        removing = viewing
+                        viewing = ""
+                    }) { Text("Remove attachment", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { viewing = "" }) { Text("Close") }
+                }
             }
         }
+    if (removing.isNotBlank())
+        AlertDialog(
+            onDismissRequest = { removing = "" },
+            title = { Title("Remove this attachment?") },
+            text = { Text("This removes the notebook’s copy and any links to it from places on this page.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val filename = removing
+                    removing = ""
+                    if (filename in page.files()) {
+                        val updated = page.copy(
+                            media = page.files().filter { it != filename }.joinToString("\n"),
+                            mediaPositions = page.withMediaPosition(filename, null),
+                        )
+                        page = updated
+                        book.queue {
+                            book.dao.saveAfterRemovingAttachment(updated, filename)
+                            File(mediaDir(book), filename).delete()
+                        }
+                    }
+                }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { removing = "" }) { Text("Cancel") } },
+        )
     if (error.isNotBlank())
         AlertDialog(
             onDismissRequest = { error = "" },

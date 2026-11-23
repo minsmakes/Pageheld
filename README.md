@@ -1,8 +1,12 @@
 # Pageheld
 
-Pageheld is a personal journal for Android. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
+![Pageheld app icon](docs/readme/pageheld-icon.svg)
 
-**[Download Pageheld 1.2 for Android](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk)** · Android 9 or newer
+[![Download Pageheld for Android](docs/readme/download-android.svg)](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk)
+
+Version 1.3 · Android 9 or newer · [Direct APK link](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk)
+
+Pageheld is a personal journal for Android. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
 
 ## Install on your phone
 
@@ -17,7 +21,7 @@ Pageheld is a personal journal for Android. Write on ruled ivory paper, keep pho
 Tap or swipe the green cover, then choose **Write today’s page**. Start typing and your words save automatically. Return to **Journal** to find the page again. In **You → Fonts**, you can change the handwriting or adjust the text size.
 
 - Pick a mood in **Today**. It appears on the home screen and is prefilled on new diary pages. Tap the mood on a page to change it for that entry.
-- Use the image button to attach a photo or video. Press and hold its thumbnail, then drag it to the spot you want on the page. Release to save its position, or tap it to view the attachment.
+- Use the image button to attach a photo or video. Press and hold its thumbnail, then drag it to the spot you want on the page. Release to save its position. To delete an attachment, tap the thumbnail, choose **Remove attachment**, and confirm. Your original photo or video stays in your phone’s library.
 
 ## Updates and backups
 

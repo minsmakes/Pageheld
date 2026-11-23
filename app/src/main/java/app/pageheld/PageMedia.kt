@@ -43,22 +43,27 @@ internal fun PageMediaSurface(
     book: Notebook,
     minimum: Dp,
     scroll: ScrollState,
+    showDragHint: Boolean,
     view: (String) -> Unit,
     place: (String, MediaPosition?) -> Unit,
     writing: @Composable ColumnScope.() -> Unit,
 ) {
     var writingHeight by remember { mutableIntStateOf(0) }
+    var hintHeight by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val textBottom = with(density) { writingHeight.toDp() }
     val files = page.files()
     val positions = remember(page.mediaPositions) { page.mediaPositionsByFile() }
+    val hintVisible = showDragHint && files.isNotEmpty() && positions.isEmpty()
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val tile = minOf(104.dp, maxWidth)
         val padding = minOf(16.dp, (maxWidth - tile) / 2)
         val stride = tile + 8.dp
         val columns = ((maxWidth - padding * 2 + 8.dp) / stride).toInt().coerceAtLeast(1)
         val travel = maxWidth - tile
-        val parking = textBottom + 42.dp
+        val parking = textBottom + if (hintVisible) {
+            maxOf(42.dp, with(density) { hintHeight.toDp() } + 16.dp)
+        } else 12.dp
         val unplaced = files.count { it !in positions }
         val rows = (unplaced + columns - 1) / columns
         val positionedBottom = files.mapNotNull { positions[it]?.down }.maxOrNull()?.dp ?: 0.dp
@@ -66,10 +71,12 @@ internal fun PageMediaSurface(
         val maxY = height - tile
         Box(Modifier.fillMaxWidth().heightIn(min = height)) {
             Column(Modifier.fillMaxWidth().onSizeChanged { writingHeight = it.height }, content = writing)
-            if (files.isNotEmpty()) {
+            if (hintVisible) {
                 Note(
                     "Hold and drag a photo or video to place it on the page.",
-                    Modifier.offset(padding, textBottom + 8.dp),
+                    Modifier.offset(y = textBottom + 8.dp)
+                        .padding(horizontal = padding)
+                        .onSizeChanged { hintHeight = it.height },
                 )
             }
             var parkedIndex = 0

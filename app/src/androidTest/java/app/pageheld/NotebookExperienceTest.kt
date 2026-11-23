@@ -42,7 +42,7 @@ class NotebookExperienceTest {
     }
 
     @Test
-    fun bilingualWritingPageRendersInTheEditor() {
+    fun bilingualPageSupportsMovingAndRemovingAttachments() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val db = Room.inMemoryDatabaseBuilder(context, NotebookDb::class.java).build()
@@ -59,6 +59,12 @@ class NotebookExperienceTest {
                 media = photo.name,
             )
         try {
+            runBlocking {
+                book.dao.saveLocation(
+                    page,
+                    DiaryLocation(pageId = page.id, position = 0, name = "Park", media = photo.name),
+                )
+            }
             ActivityScenario.launch(MainActivity::class.java).use { activity ->
                 activity.onActivity { host ->
                     host.setContent {
@@ -94,6 +100,8 @@ class NotebookExperienceTest {
                 }
                 assertTrue("Bilingual title is visible", page.title in visible)
                 assertTrue("Bilingual body is visible", page.body in visible)
+                val hint = "Hold and drag a photo or video to place it on the page."
+                assertTrue(hint in visible)
                 if (InstrumentationRegistry.getArguments().getString("capture") == "true") {
                     val screenshot = requireNotNull(automation.takeScreenshot())
                     File(context.cacheDir, "bilingual-review.png").outputStream().use {
@@ -139,6 +147,38 @@ class NotebookExperienceTest {
                     }
                 }
                 assertTrue(saved.across > .08f)
+                automation.waitForIdle(250, 5000)
+                assertFalse(hint in texts(automation.rootInActiveWindow))
+
+                fun tap(bounds: Rect) {
+                    automation.executeShellCommand("input tap ${bounds.centerX()} ${bounds.centerY()}")
+                        .use { descriptor ->
+                            android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).readBytes()
+                        }
+                    automation.waitForIdle(250, 5000)
+                }
+                fun tapLabel(label: String) {
+                    val node = requireNotNull(automation.rootInActiveWindow)
+                        .findAccessibilityNodeInfosByText(label)
+                        .first { it.text?.toString() == label }
+                    tap(Rect().also(node::getBoundsInScreen))
+                }
+                tap(requireNotNull(photoBounds(automation.rootInActiveWindow)))
+                tapLabel("Remove attachment")
+                tapLabel("Remove")
+                val updated = runBlocking {
+                    withTimeout(5_000) {
+                        book.dao.pages().first { it.single().files().isEmpty() }.single()
+                    }
+                }
+                assertEquals(page.body, updated.body)
+                assertTrue(updated.mediaPositionsByFile().isEmpty())
+                assertEquals("", runBlocking { book.dao.locationsFor(page.id).single().media })
+                val deletionDeadline = SystemClock.elapsedRealtime() + 5000
+                while (photo.exists() && SystemClock.elapsedRealtime() < deletionDeadline) {
+                    SystemClock.sleep(50)
+                }
+                assertFalse(photo.exists())
             }
         } finally {
             photo.delete()
