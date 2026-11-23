@@ -64,13 +64,6 @@ fun EntryRow(p: Page, book: Notebook, open: (Page) -> Unit, menu: Boolean = fals
                 Action("ellipsis-vertical", "Entry actions") { expanded = true }
                 DropdownMenu(expanded, { expanded = false }) {
                     DropdownMenuItem(
-                        text = { Text("Open page") },
-                        onClick = {
-                            expanded = false
-                            open(p)
-                        },
-                    )
-                    DropdownMenuItem(
                         text = { Text(if (p.starred) "Remove bookmark" else "Bookmark") },
                         onClick = {
                             expanded = false
@@ -89,10 +82,11 @@ fun Today(
     prefs: Map<String, String>,
     open: (Page) -> Unit,
     bookmarks: () -> Unit,
-    checkIn: () -> Unit,
+    newPage: () -> Unit,
 ) {
     val now = System.currentTimeMillis()
     val day = date(now).toLocalDate()
+    val dailyMood = prefs["mood.$day"].orEmpty()
     val anniversary =
         pages.firstOrNull {
             val d = date(it.created).toLocalDate()
@@ -101,10 +95,9 @@ fun Today(
     Column {
         Header(PAGEHELD_WORDMARK) {
             Action("bookmark", "Bookmarked pages", click = bookmarks)
-            Action("bell", "Daily check-in", click = checkIn)
         }
         LazyColumn(
-            contentPadding = PaddingValues(start = 17.dp, end = 17.dp, top = 24.dp, bottom = 86.dp),
+            contentPadding = PaddingValues(start = 17.dp, end = 17.dp, top = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
             item {
@@ -122,7 +115,7 @@ fun Today(
                 }
             }
             item {
-                Panel(Modifier.clickable { open(Page()) }) {
+                Panel(Modifier.clickable(onClick = newPage)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             Modifier.size(46.dp).background(pale, RoundedCornerShape(14.dp)),
@@ -133,7 +126,8 @@ fun Today(
                         Spacer(Modifier.width(14.dp))
                         Column {
                             Title("Write today’s page", 20)
-                            Note("A little space for whatever is on your mind.")
+                            Note(if (dailyMood.isBlank()) "A little space for whatever is on your mind."
+                                else "Starts with your ${dailyMood.lowercase()} mood.")
                         }
                     }
                 }
@@ -141,12 +135,13 @@ fun Today(
             item {
                 Panel {
                     Title("Mood check-in", 18)
+                    Note(dailyMood.ifBlank { "How are you feeling today?" })
                     Spacer(Modifier.height(5.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                         val colors =
                             listOf(0xffffdfa3, 0xfff5e3be, 0xfff1d5c6, 0xffd3dddd, 0xffdfd4df)
                         moods.forEachIndexed { i, m ->
-                            val active = prefs["mood.$day"] == m
+                            val active = dailyMood == m
                             Box(
                                 Modifier.size(46.dp)
                                     .clickable { book.setting("mood.$day", m) }

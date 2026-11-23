@@ -53,6 +53,7 @@ data class Page(
     val chapter: String? = null,
     val media: String = "",
     val starred: Boolean = false,
+    @ColumnInfo(defaultValue = "''") val mediaPositions: String = "",
 )
 
 fun Page.heading() =
@@ -180,9 +181,16 @@ interface JournalDao {
     }
 }
 
+internal val mediaPlacementMigration =
+    object : androidx.room.migration.Migration(2, 3) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE Page ADD COLUMN mediaPositions TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
 @Database(
     entities = [Page::class, Chapter::class, DiaryLocation::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class NotebookDb : RoomDatabase() {
@@ -196,7 +204,7 @@ internal constructor(
     val context: Context,
     val db: NotebookDb =
         Room.databaseBuilder(context, NotebookDb::class.java, "pageheld.db")
-            .addMigrations(locationMigration)
+            .addMigrations(locationMigration, mediaPlacementMigration)
             .build(),
 ) {
     val dao = db.journal()

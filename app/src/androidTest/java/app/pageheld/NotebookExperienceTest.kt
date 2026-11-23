@@ -1,8 +1,11 @@
 package app.pageheld
 
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.location.Address
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -14,6 +17,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,10 +47,16 @@ class NotebookExperienceTest {
         val context = instrumentation.targetContext
         val db = Room.inMemoryDatabaseBuilder(context, NotebookDb::class.java).build()
         val book = Notebook(context, db)
+        val photo = File(mediaDir(book), uid() + ".photo")
+        Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888).let { image ->
+            photo.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            image.recycle()
+        }
         val page =
             Page(
                 title = "산책 · A quiet walk",
                 body = "바람이 부는 오후, 천천히 걸었다.\n\nA little time to write and remember.",
+                media = photo.name,
             )
         try {
             ActivityScenario.launch(MainActivity::class.java).use { activity ->
@@ -89,8 +101,47 @@ class NotebookExperienceTest {
                     }
                     screenshot.recycle()
                 }
+                fun photoBounds(node: AccessibilityNodeInfo?): Rect? {
+                    if (node == null) return null
+                    if (node.contentDescription?.toString() == "Attached photograph")
+                        return Rect().also(node::getBoundsInScreen)
+                    return (0 until node.childCount).firstNotNullOfOrNull {
+                        photoBounds(node.getChild(it))
+                    }
+                }
+                val bounds = requireNotNull(photoBounds(automation.rootInActiveWindow))
+                val start = SystemClock.uptimeMillis()
+                fun touch(action: Int, step: Int) {
+                    val event = MotionEvent.obtain(
+                        start, SystemClock.uptimeMillis(), action,
+                        bounds.exactCenterX() + step * bounds.width() / 7f,
+                        bounds.exactCenterY() - step * bounds.height() / 9f,
+                        0,
+                    )
+                    event.source = InputDevice.SOURCE_TOUCHSCREEN
+                    try {
+                        assertTrue(automation.injectInputEvent(event, true))
+                    } finally {
+                        event.recycle()
+                    }
+                }
+                touch(MotionEvent.ACTION_DOWN, 0)
+                SystemClock.sleep(700)
+                for (step in 1..5) {
+                    touch(MotionEvent.ACTION_MOVE, step)
+                    SystemClock.sleep(30)
+                }
+                touch(MotionEvent.ACTION_UP, 5)
+                val saved = runBlocking {
+                    withTimeout(5_000) {
+                        book.dao.pages().first { it.any { page -> page.mediaPositions.isNotBlank() } }
+                            .single().mediaPositionsByFile().getValue(photo.name)
+                    }
+                }
+                assertTrue(saved.across > .08f)
             }
         } finally {
+            photo.delete()
             db.close()
         }
     }

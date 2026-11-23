@@ -25,12 +25,14 @@ class NotebookTest {
         var restoredFile: File? = null
         try {
             original.writeBytes(byteArrayOf(3, 2, 1))
+            val position = MediaPosition(.35f, 220f)
             val entry =
                 Page(
                     body = "First paragraph\n\nSecond paragraph",
                     paper = "Grid",
                     chapter = chapter.id,
                     media = original.name,
+                    mediaPositions = mapOf(original.name to position).encodeMediaPositions(),
                 )
             book.dao.save(chapter)
             book.dao.save(entry)
@@ -48,7 +50,14 @@ class NotebookTest {
             assertTrue(book.dao.pages().first().isEmpty())
             restore(book, Uri.fromFile(archive), password)
             val restored = book.dao.pages().first().single()
-            assertEquals(entry.copy(media = restored.media, place = "Park"), restored)
+            assertEquals(
+                entry.copy(
+                    media = restored.media,
+                    mediaPositions = mapOf(restored.media to position).encodeMediaPositions(),
+                    place = "Park",
+                ),
+                restored,
+            )
             assertEquals(restored.media, book.dao.locationsFor(restored.id).single().media)
             restoredFile = File(mediaDir(book), restored.media)
             assertArrayEquals(original.readBytes(), restoredFile.readBytes())

@@ -2,7 +2,7 @@
 
 Pageheld is a personal journal for Android. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
 
-**[Download Pageheld for Android](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk)** · Android 9 or newer
+**[Download Pageheld 1.2 for Android](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk)** · Android 9 or newer
 
 ## Install on your phone
 
@@ -15,6 +15,9 @@ Pageheld is a personal journal for Android. Write on ruled ivory paper, keep pho
 ## Write your first page
 
 Tap or swipe the green cover, then choose **Write today’s page**. Start typing and your words save automatically. Return to **Journal** to find the page again. In **You → Fonts**, you can change the handwriting or adjust the text size.
+
+- Pick a mood in **Today**. It appears on the home screen and is prefilled on new diary pages. Tap the mood on a page to change it for that entry.
+- Use the image button to attach a photo or video. Press and hold its thumbnail, then drag it to the spot you want on the page. Release to save its position, or tap it to view the attachment.
 
 ## Updates and backups
 
@@ -37,7 +40,7 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. A fresh insta
 ## Using the notebook
 
 - Swipe or tap the cover to open your notebook. **You** contains the opening-cover and reduced-motion switches. Use the editor header arrows to turn between saved pages.
-- Open **Write today’s page** or **+**. Edits save automatically. Use **Aa** for paper and writing preferences and the notebook icon for templates and chapters.
+- Open **Write today’s page** from Today or **+** from Journal. Edits save automatically. Use **Aa** for paper and writing preferences and the notebook icon for templates and chapters.
 - Choose a photo or video in the Android picker. Pageheld copies the selected file into its private storage. Tap its thumbnail to reopen it.
 - Search or filter in **Journal**. The calendar selects a date. Page options include bookmarking and deletion.
 - Create a chapter with **+** in **Chapters**. Open a chapter for rename, reorder and delete actions. Its pages stay in Journal when the chapter is removed.

@@ -51,6 +51,7 @@ private fun Page.json(locations: List<DiaryLocation>) =
         .put("chapter", chapter)
         .put("media", media)
         .put("starred", starred)
+        .put("mediaPositions", mediaPositions)
         .put(
             "locations",
             JSONArray(
@@ -82,6 +83,7 @@ private fun JSONObject.page() =
         if (has("chapter")) getString("chapter") else null,
         getString("media"),
         getBoolean("starred"),
+        optString("mediaPositions"),
     )
 
 internal suspend fun backup(book: Notebook, uri: Uri, password: String) {
@@ -213,13 +215,17 @@ internal suspend fun restore(book: Notebook, uri: Uri, password: String) {
                         source.copyTo(dest)
                         dest.name
                     }
+                val remap = p.files().zip(names).toMap()
+                val placements = p.mediaPositionsByFile()
                 book.dao.save(
                     p.copy(
                         media = names.joinToString("\n"),
+                        mediaPositions = remap.mapNotNull { (old, new) ->
+                            placements[old]?.let { new to it }
+                        }.toMap().encodeMediaPositions(),
                         chapter = p.chapter?.takeIf { it in chapterIds },
                     )
                 )
-                val remap = p.files().zip(names).toMap()
                 val places = row.optJSONArray("locations")
                 if (places != null) {
                     for (index in 0 until places.length()) {

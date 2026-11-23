@@ -15,7 +15,7 @@ class LocationPersistenceTest {
 
     private fun open(name: String) =
         Room.databaseBuilder(context, NotebookDb::class.java, name)
-            .addMigrations(locationMigration)
+            .addMigrations(locationMigration, mediaPlacementMigration)
             .build()
 
     @Test
@@ -103,6 +103,7 @@ class LocationPersistenceTest {
             val dao = db.journal()
             val page = dao.pages().first().single { it.id == "p" }
             assertEquals("Original body", page.body)
+            assertEquals("", page.mediaPositions)
             assertEquals("Grid", page.paper)
             assertTrue(page.starred)
             assertEquals("Walks", dao.chapters().first().single { it.id == page.chapter }.name)

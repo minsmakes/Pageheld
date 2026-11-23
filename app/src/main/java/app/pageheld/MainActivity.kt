@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.*
-import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,10 +92,10 @@ private fun NotebookScreens(
     var editor by rememberSaveable { mutableStateOf<String?>(null) }
     var created by rememberSaveable { mutableLongStateOf(0L) }
     var initialChapter by rememberSaveable { mutableStateOf<String?>(null) }
+    var initialMood by rememberSaveable { mutableStateOf("") }
     var selection by rememberSaveable { mutableStateOf<String?>(null) }
     var bookmarks by rememberSaveable { mutableStateOf(false) }
     val locations by remember(book) { book.dao.locations() }.collectAsState(initial = null)
-    var info by rememberSaveable { mutableStateOf("") }
     val pages = data.orEmpty()
     var journalIds by remember { mutableStateOf<Set<String>?>(null) }
     fun open(p: Page) {
@@ -104,8 +103,11 @@ private fun NotebookScreens(
         turn = 0
         created = p.created
         initialChapter = p.chapter
+        initialMood = if (pages.any { it.id == p.id }) p.mood
+            else prefs["mood.${date(p.created).toLocalDate()}"].orEmpty()
         editor = p.id
     }
+    fun newPage() = open(Page())
     fun go(t: String) {
         tab = t
         selection = null
@@ -128,7 +130,7 @@ private fun NotebookScreens(
                 key(editor) {
                     val seed = remember {
                         pages.find { it.id == editor }
-                            ?: Page(id = editor!!, created = created, chapter = initialChapter)
+                            ?: Page(id = editor!!, created = created, chapter = initialChapter, mood = initialMood)
                     }
                     val sequence =
                         if (tab == "Chapters" && selection != null)
@@ -141,6 +143,7 @@ private fun NotebookScreens(
                         return {
                             created = target.created
                             initialChapter = target.chapter
+                            initialMood = target.mood
                             editor = target.id
                             turn = offset
                         }
@@ -173,7 +176,7 @@ private fun NotebookScreens(
                                         go("Journal")
                                         bookmarks = true
                                     },
-                                    { info = "Reminders" },
+                                    ::newPage,
                                 )
                             "Journal" ->
                                 Journal(
@@ -199,9 +202,9 @@ private fun NotebookScreens(
                                 )
                             else -> You(book, prefs)
                         }
-                        if (tab == "Today" || tab == "Journal" || tab == "Memories")
+                        if (tab == "Journal")
                             FloatingActionButton(
-                                onClick = { open(Page()) },
+                                onClick = ::newPage,
                                 modifier =
                                     Modifier.align(Alignment.BottomEnd).padding(16.dp).size(58.dp),
                                 shape = CircleShape,
@@ -254,17 +257,5 @@ private fun NotebookScreens(
     BackHandler(editor == null && (tab != "Today" || selection != null)) {
         if (selection != null) selection = null else go("Today")
     }
-    if (info.isNotBlank())
-        AlertDialog(
-            onDismissRequest = { info = "" },
-            title = { Title("Today’s check-in") },
-            text = {
-                Note(
-                    if (prefs["mood." + LocalDate.now()] != null)
-                        "Your mood today is " + prefs["mood." + LocalDate.now()]?.lowercase() + "."
-                    else "Take a moment to notice how you feel. Your daily mood is saved in Today."
-                )
-            },
-            confirmButton = { TextButton(onClick = { info = "" }) { Text("Done") } },
-        )
+
 }

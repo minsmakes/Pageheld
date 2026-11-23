@@ -235,14 +235,6 @@ fun Editor(
                     }
                 }
         }
-    fun pick(video: Boolean) {
-        picker.launch(
-            PickVisualMediaRequest(
-                if (video) ActivityResultContracts.PickVisualMedia.VideoOnly
-                else ActivityResultContracts.PickVisualMedia.ImageOnly
-            )
-        )
-    }
     val paper = page.paper.ifBlank { settings["paper"] ?: "Ruled" }
     val color = swatches.getOrElse(settings["tone"]?.toIntOrNull() ?: 0) { ivory }
     val bodySize = writingSize(settings)
@@ -295,8 +287,9 @@ fun Editor(
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val minimum = maxHeight
+            val scroll = rememberScrollState()
             Column(
-                Modifier.verticalScroll(rememberScrollState())
+                Modifier.verticalScroll(scroll)
                     .fillMaxWidth()
                     .heightIn(min = minimum)
                     .paper(
@@ -307,140 +300,118 @@ fun Editor(
                         bodyY + baseline + with(density) { 2.dp.toPx() },
                     )
             ) {
-                Column(Modifier.padding(start = margin + 12.dp, end = 18.dp, top = 18.dp)) {
-                    Note(
-                        stamp(page.created, "yMMMEd") +
-                            "  ·  " +
-                            android.text.format.DateFormat.getTimeFormat(book.context)
-                                .format(java.util.Date(page.created))
-                    )
-                    Spacer(Modifier.height(24.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        BasicTextField(
-                            page.title,
-                            { change(page.copy(title = it), true) },
-                            Modifier.width(IntrinsicSize.Max)
-                                .widthIn(min = 130.dp, max = 245.dp)
-                                .weight(1f, fill = false)
-                                .semantics { contentDescription = "Page title" },
-                            textStyle =
-                                TextStyle(
-                                    fontSynthesis = FontSynthesis.None,
-                                    fontFamily = font,
-                                    fontSize = titleSize,
-                                    color = ink,
-                                ),
-                            singleLine = true,
-                            cursorBrush = SolidColor(sage),
-                            decorationBox = { inner ->
-                                Box {
-                                    if (page.title.isEmpty())
-                                        Text(
-                                            "Untitled page",
-                                            maxLines = 1,
-                                            color = muted,
-                                            fontSize = titleSize,
-                                            fontFamily = font,
-                                        )
-                                    inner()
-                                }
-                            },
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Glyph("sprout", tint = sage, size = 25)
-                    }
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Tag(page.mood.ifBlank { "Mood" }, icon = "smile") { tools("Mood") }
-                        Tag(
-                            when (locations.size) {
-                                0 -> "Places"
-                                1 -> locations.first().label()
-                                else -> "${locations.size} places"
-                            },
-                            icon = "map-pin",
-                        ) {
-                            tools("Place")
-                        }
-                    }
-                }
-                Spacer(Modifier.height(18.dp))
-                BasicTextField(
-                    page.body,
-                    { change(page.copy(body = it), true) },
-                    Modifier.fillMaxWidth()
-                        .onGloballyPositioned { bodyY = it.positionInParent().y }
-                        .padding(start = margin + 10.dp, end = 18.dp)
-                        .heightIn(min = interval * 8)
-                        .semantics { contentDescription = "Page body" },
-                    textStyle =
-                        TextStyle(
-                            fontFamily = font,
-                            fontSynthesis = FontSynthesis.None,
-                            fontSize = bodySize.sp,
-                            lineHeight = line,
-                            color = ink,
-                            lineHeightStyle =
-                                LineHeightStyle(
-                                    LineHeightStyle.Alignment.Center,
-                                    LineHeightStyle.Trim.None,
-                                ),
-                        ),
-                    onTextLayout = {
-                        baseline = it.getLineBaseline(0)
-                        measured =
-                            if (it.lineCount > 1) it.getLineBaseline(1) - it.getLineBaseline(0)
-                            else 0f
+                PageMediaSurface(
+                    page,
+                    book,
+                    minimum,
+                    scroll,
+                    view = { viewing = it },
+                    place = { name, position ->
+                        change(page.copy(mediaPositions = page.withMediaPosition(name, position)))
                     },
-                    cursorBrush = SolidColor(sage),
-                    decorationBox = { inner ->
-                        Box {
-                            if (page.body.isEmpty())
-                                Text(
-                                    "Begin your page…",
-                                    color = muted,
-                                    fontFamily = font,
-                                    fontSize = bodySize.sp,
-                                    lineHeight = line,
-                                )
-                            inner()
-                        }
-                    },
-                )
-                Row(
-                    Modifier.padding(start = margin, end = 12.dp, top = 30.dp, bottom = 24.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    page.files().forEach { name ->
-                        Thumbnail(
-                            File(mediaDir(book), name),
-                            Modifier.size(102.dp).clickable { viewing = name },
+                    Column(Modifier.padding(start = margin + 12.dp, end = 18.dp, top = 18.dp)) {
+                        Note(
+                            stamp(page.created, "yMMMEd") +
+                                "  ·  " +
+                                android.text.format.DateFormat.getTimeFormat(book.context)
+                                    .format(java.util.Date(page.created))
                         )
-                    }
-                    Box(
-                        Modifier.size(76.dp, 100.dp)
-                            .drawBehind {
-                                drawRoundRect(
-                                    edge,
-                                    cornerRadius =
-                                        androidx.compose.ui.geometry.CornerRadius(10.dp.toPx()),
-                                    style =
-                                        androidx.compose.ui.graphics.drawscope.Stroke(
-                                            1.dp.toPx(),
-                                            pathEffect =
-                                                PathEffect.dashPathEffect(floatArrayOf(10f, 7f), 0f),
-                                        ),
-                                )
+                        Spacer(Modifier.height(24.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            BasicTextField(
+                                page.title,
+                                { change(page.copy(title = it), true) },
+                                Modifier.width(IntrinsicSize.Max)
+                                    .widthIn(min = 130.dp, max = 245.dp)
+                                    .weight(1f, fill = false)
+                                    .semantics { contentDescription = "Page title" },
+                                textStyle =
+                                    TextStyle(
+                                        fontSynthesis = FontSynthesis.None,
+                                        fontFamily = font,
+                                        fontSize = titleSize,
+                                        color = ink,
+                                    ),
+                                singleLine = true,
+                                cursorBrush = SolidColor(sage),
+                                decorationBox = { inner ->
+                                    Box {
+                                        if (page.title.isEmpty())
+                                            Text(
+                                                "Untitled page",
+                                                maxLines = 1,
+                                                color = muted,
+                                                fontSize = titleSize,
+                                                fontFamily = font,
+                                            )
+                                        inner()
+                                    }
+                                },
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Glyph("sprout", tint = sage, size = 25)
+                        }
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Tag(page.mood.ifBlank { "Mood" }, icon = "smile") { tools("Mood") }
+                            Tag(
+                                when (locations.size) {
+                                    0 -> "Places"
+                                    1 -> locations.first().label()
+                                    else -> "${locations.size} places"
+                                },
+                                icon = "map-pin",
+                            ) {
+                                tools("Place")
                             }
-                            .clickable(enabled = !importing) { pick(false) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (importing) CircularProgressIndicator()
-                        else Glyph("plus", "Attach photograph")
+                        }
                     }
+                    Spacer(Modifier.height(18.dp))
+                    BasicTextField(
+                        page.body,
+                        { change(page.copy(body = it), true) },
+                        Modifier.fillMaxWidth()
+                            .onGloballyPositioned { bodyY = it.positionInParent().y }
+                            .padding(start = margin + 10.dp, end = 18.dp)
+                            .heightIn(min = interval * 8)
+                            .semantics { contentDescription = "Page body" },
+                        textStyle =
+                            TextStyle(
+                                fontFamily = font,
+                                fontSynthesis = FontSynthesis.None,
+                                fontSize = bodySize.sp,
+                                lineHeight = line,
+                                color = ink,
+                                lineHeightStyle =
+                                    LineHeightStyle(
+                                        LineHeightStyle.Alignment.Center,
+                                        LineHeightStyle.Trim.None,
+                                    ),
+                            ),
+                        onTextLayout = {
+                            baseline = it.getLineBaseline(0)
+                            measured =
+                                if (it.lineCount > 1) it.getLineBaseline(1) - it.getLineBaseline(0)
+                                else 0f
+                        },
+                        cursorBrush = SolidColor(sage),
+                        decorationBox = { inner ->
+                            Box {
+                                if (page.body.isEmpty())
+                                    Text(
+                                        "Begin your page…",
+                                        color = muted,
+                                        fontFamily = font,
+                                        fontSize = bodySize.sp,
+                                        lineHeight = line,
+                                    )
+                                inner()
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -452,10 +423,9 @@ fun Editor(
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             Action("type", "Paper and text") { tools("Appearance") }
-            Action("image", "Add photo", !importing) { pick(false) }
-            Action("video", "Add video", !importing) { pick(true) }
-            Action("map-pin", "Choose place") { tools("Place") }
-            Action("smile", "Choose mood") { tools("Mood") }
+            Action("image", "Attach photo or video", !importing) {
+                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+            }
             Action("notebook", "Template and chapter") { tools("Organize page") }
         }
     }
@@ -562,8 +532,6 @@ fun Editor(
                             change(page.copy(starred = !page.starred))
                             sheet = ""
                         }
-                        Tag("Appearance") { sheet = "Appearance" }
-                        Tag("Template and chapter") { sheet = "Organize page" }
                         Tag("Delete page") {
                             sheet = ""
                             error = "Delete this page?"
