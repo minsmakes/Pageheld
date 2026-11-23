@@ -158,10 +158,20 @@ class NotebookExperienceTest {
                     automation.waitForIdle(250, 5000)
                 }
                 fun tapLabel(label: String) {
-                    val node = requireNotNull(automation.rootInActiveWindow)
-                        .findAccessibilityNodeInfosByText(label)
-                        .first { it.text?.toString() == label }
-                    tap(Rect().also(node::getBoundsInScreen))
+                    fun find(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+                        if (node == null || node.text?.toString() == label) return node
+                        return (0 until node.childCount).firstNotNullOfOrNull { find(node.getChild(it)) }
+                    }
+                    val timeout = SystemClock.elapsedRealtime() + 5000
+                    while (SystemClock.elapsedRealtime() < timeout) {
+                        val node = find(automation.rootInActiveWindow)
+                        if (node != null) {
+                            tap(Rect().also(node::getBoundsInScreen))
+                            return
+                        }
+                        SystemClock.sleep(100)
+                    }
+                    fail("Missing button $label. Visible text: ${texts(automation.rootInActiveWindow)}")
                 }
                 tap(requireNotNull(photoBounds(automation.rootInActiveWindow)))
                 tapLabel("Remove attachment")
