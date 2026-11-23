@@ -24,6 +24,7 @@ val templates =
         "Workout Reflection" to "Today’s movement\n\nHow I felt afterwards",
     )
 val moods = listOf("Joyful", "Content", "Uneasy", "Low", "Sad")
+internal val diaryWeather = listOf("Sunny", "Partly cloudy", "Cloudy", "Rainy", "Stormy", "Snowy", "Foggy", "Windy")
 
 fun uid() = UUID.randomUUID().toString()
 
@@ -54,6 +55,7 @@ data class Page(
     val media: String = "",
     val starred: Boolean = false,
     @ColumnInfo(defaultValue = "''") val mediaPositions: String = "",
+    @ColumnInfo(defaultValue = "''") val weather: String = "",
 )
 
 fun Page.heading() =
@@ -199,9 +201,16 @@ internal val mediaPlacementMigration =
         }
     }
 
+internal val weatherMigration =
+    object : androidx.room.migration.Migration(3, 4) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE Page ADD COLUMN weather TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
 @Database(
     entities = [Page::class, Chapter::class, DiaryLocation::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class NotebookDb : RoomDatabase() {
@@ -215,7 +224,7 @@ internal constructor(
     val context: Context,
     val db: NotebookDb =
         Room.databaseBuilder(context, NotebookDb::class.java, "pageheld.db")
-            .addMigrations(locationMigration, mediaPlacementMigration)
+            .addMigrations(locationMigration, mediaPlacementMigration, weatherMigration)
             .build(),
 ) {
     val dao = db.journal()

@@ -52,6 +52,7 @@ private fun Page.json(locations: List<DiaryLocation>) =
         .put("media", media)
         .put("starred", starred)
         .put("mediaPositions", mediaPositions)
+        .put("weather", weather)
         .put(
             "locations",
             JSONArray(
@@ -84,6 +85,7 @@ private fun JSONObject.page() =
         getString("media"),
         getBoolean("starred"),
         optString("mediaPositions"),
+        optString("weather"),
     )
 
 internal suspend fun backup(book: Notebook, uri: Uri, password: String) {

@@ -32,6 +32,7 @@ class NotebookTest {
                     paper = "Grid",
                     chapter = chapter.id,
                     media = original.name,
+                    weather = "Rainy",
                     mediaPositions = mapOf(original.name to position).encodeMediaPositions(),
                 )
             book.dao.save(chapter)

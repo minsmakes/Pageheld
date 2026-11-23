@@ -48,7 +48,7 @@ fun EntryRow(p: Page, book: Notebook, open: (Page) -> Unit, menu: Boolean = fals
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Note(stamp(p.created, "yMMMd"))
+            Note(listOf(stamp(p.created, "yMMMd"), p.weather).filter(String::isNotBlank).joinToString("  ·  "))
             Spacer(Modifier.height(3.dp))
             Text(
                 p.body.ifBlank { p.template },

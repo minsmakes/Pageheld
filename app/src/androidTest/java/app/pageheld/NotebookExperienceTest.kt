@@ -189,6 +189,16 @@ class NotebookExperienceTest {
                     SystemClock.sleep(50)
                 }
                 assertFalse(photo.exists())
+                tapLabel("Weather")
+                tapLabel("Rainy")
+                runBlocking {
+                    withTimeout(5_000) { book.dao.pages().first { it.single().weather == "Rainy" } }
+                }
+                tapLabel("Rainy")
+                tapLabel("Clear weather")
+                runBlocking {
+                    withTimeout(5_000) { book.dao.pages().first { it.single().weather.isEmpty() } }
+                }
             }
         } finally {
             photo.delete()

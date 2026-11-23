@@ -1,12 +1,20 @@
 package app.pageheld
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -36,6 +44,34 @@ internal fun Page.withMediaPosition(name: String, position: MediaPosition?): Str
     mediaPositionsByFile().toMutableMap().apply {
         if (position == null) remove(name) else put(name, position)
     }.encodeMediaPositions()
+
+@Composable
+internal fun MediaMount(
+    modifier: Modifier,
+    taped: Boolean = false,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val corners = RoundedCornerShape(3.dp)
+    Box(
+        modifier.shadow(if (taped) 2.dp else 1.dp, corners)
+            .background(Color(0xfffffaf0), corners)
+            .border(.7.dp, Color(0xffd6c9b5), corners)
+            .drawWithContent {
+                drawContent()
+                if (taped) {
+                    val center = Offset(size.width * .5f, 7.dp.toPx())
+                    rotate(-8f, center) {
+                        val width = size.width * .42f
+                        val topLeft = center - Offset(width / 2, 4.dp.toPx())
+                        drawRect(Color(0xffc5b389).copy(alpha = .75f), topLeft, Size(width, 8.dp.toPx()))
+                        drawLine(Color(0xfff7ebd2), topLeft, topLeft + Offset(width, 0f), .6.dp.toPx())
+                    }
+                }
+            }
+            .padding(start = 6.dp, end = 6.dp, top = if (taped) 10.dp else 6.dp, bottom = if (taped) 13.dp else 6.dp),
+        content = content,
+    )
+}
 
 @Composable
 internal fun PageMediaSurface(
@@ -134,8 +170,7 @@ internal fun PageMediaSurface(
                             }
                         }
                     }
-                    Thumbnail(
-                        File(mediaDir(book), file),
+                    MediaMount(
                         Modifier.offset {
                             val point = dragging ?: currentOrigin
                             IntOffset(point.x.roundToInt(), point.y.roundToInt())
@@ -170,7 +205,10 @@ internal fun PageMediaSurface(
                                     },
                                 )
                             },
-                    )
+                        taped = true,
+                    ) {
+                        Thumbnail(File(mediaDir(book), file), Modifier.fillMaxSize())
+                    }
                 }
             }
         }

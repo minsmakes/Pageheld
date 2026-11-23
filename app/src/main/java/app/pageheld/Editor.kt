@@ -70,7 +70,8 @@ fun Thumbnail(file: File, modifier: Modifier, large: Boolean = false) {
                 }
         }
     Box(
-        modifier.clip(RoundedCornerShape(7.dp)).background(pale),
+        modifier.clip(RoundedCornerShape(if (large) 2.dp else 7.dp))
+            .background(if (large) Color(0xffeee8db) else pale),
         contentAlignment = Alignment.Center,
     ) {
         bitmap?.let {
@@ -81,8 +82,12 @@ fun Thumbnail(file: File, modifier: Modifier, large: Boolean = false) {
                 contentScale = if (large) ContentScale.Fit else ContentScale.Crop,
             )
         }
-        if (bitmap == null || file.extension == "video")
-            Glyph(if (file.extension == "video") "play" else "image")
+        if (file.extension == "video") {
+            Box(Modifier.size(32.dp).background(ink.copy(alpha = .78f), CircleShape),
+                contentAlignment = Alignment.Center) {
+                Glyph("play", tint = ivory, size = 17)
+            }
+        } else if (bitmap == null) Glyph("image")
     }
 }
 
@@ -364,11 +369,14 @@ fun Editor(
                             Spacer(Modifier.width(6.dp))
                             Glyph("sprout", tint = sage, size = 25)
                         }
-                        Row(
-                            Modifier.horizontalScroll(rememberScrollState()),
+                        FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             Tag(page.mood.ifBlank { "Mood" }, icon = "smile") { tools("Mood") }
+                            Tag(page.weather.ifBlank { "Weather" }, icon = if (page.weather == "Sunny") "sun" else "cloud") {
+                                tools("Weather")
+                            }
                             Tag(
                                 when (locations.size) {
                                     0 -> "Places"
@@ -435,7 +443,7 @@ fun Editor(
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             Action("type", "Paper and text") { tools("Appearance") }
-            Action("image", "Attach photo or video", !importing) {
+            Action("import-media", "Attach photo or video", !importing) {
                 picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
             }
             Action("notebook", "Template and chapter") { tools("Organize page") }
@@ -472,6 +480,25 @@ fun Editor(
                                 sheet = ""
                             }
                         }
+                    "Weather" -> {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            diaryWeather.forEach { condition ->
+                                Tag(condition, condition == page.weather) {
+                                    change(page.copy(weather = condition))
+                                    sheet = ""
+                                }
+                            }
+                        }
+                        if (page.weather.isNotEmpty()) {
+                            TextButton(onClick = {
+                                change(page.copy(weather = ""))
+                                sheet = ""
+                            }) { Text("Clear weather") }
+                        }
+                    }
                     "Organize page" -> {
                         Title("Entry template", 19)
                         Row(
@@ -556,8 +583,9 @@ fun Editor(
         Dialog(onDismissRequest = { viewing = "" }) {
             Column(Modifier.background(ivory, round).padding(12.dp)) {
                 val file = File(mediaDir(book), viewing)
-                if (file.extension == "video")
-                    AndroidView(
+                val previewHeight = minOf(360.dp, (LocalConfiguration.current.screenHeightDp * .52f).dp)
+                MediaMount(Modifier.fillMaxWidth().height(previewHeight)) {
+                    if (file.extension == "video") AndroidView(
                         factory = { ctx ->
                             VideoView(ctx).apply {
                                 setVideoPath(file.path)
@@ -569,9 +597,10 @@ fun Editor(
                                 start()
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(320.dp),
+                        modifier = Modifier.fillMaxSize().background(Color(0xffeee8db)),
                     )
-                else Thumbnail(file, Modifier.fillMaxWidth().height(360.dp), true)
+                    else Thumbnail(file, Modifier.fillMaxSize(), large = true)
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = {
                         removing = viewing

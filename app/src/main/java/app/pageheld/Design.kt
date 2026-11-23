@@ -45,6 +45,7 @@ val icons =
         "redo-2" to R.drawable.i_redo_2,
         "ellipsis-vertical" to R.drawable.i_ellipsis_vertical,
         "image" to R.drawable.i_image,
+        "import-media" to R.drawable.i_import_media,
         "video" to R.drawable.i_video,
         "smile" to R.drawable.i_smile,
         "notebook" to R.drawable.i_notebook,
@@ -78,12 +79,20 @@ val icons =
 
 @Composable
 fun Glyph(name: String, label: String? = null, tint: Color = ink, size: Int = 22) =
-    Icon(painterResource(icons.getValue(name)), label, Modifier.size(size.dp), tint = tint)
+    Icon(
+        painterResource(icons.getValue(name)),
+        label,
+        Modifier.size(size.dp),
+        tint = if (name == "import-media") Color.Unspecified else tint,
+    )
 
 @Composable
 fun Action(name: String, label: String, enabled: Boolean = true, click: () -> Unit) {
     IconButton(onClick = click, enabled = enabled) {
-        Glyph(name, label, if (enabled) ink else muted.copy(alpha = .35f))
+        Box(Modifier.alpha(if (name == "import-media" && !enabled) .35f else 1f)) {
+            Glyph(name, label, if (enabled) ink else muted.copy(alpha = .35f),
+                size = if (name == "import-media") 27 else 22)
+        }
     }
 }
 
