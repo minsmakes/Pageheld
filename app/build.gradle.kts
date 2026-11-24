@@ -10,8 +10,8 @@ android {
         applicationId = "app.pageheld"
         minSdk = 28
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.5"
+        versionCode = 6
+        versionName = "1.5.b"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     flavorDimensions += "edition"

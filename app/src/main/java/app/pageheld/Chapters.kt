@@ -66,29 +66,19 @@ fun Chapters(
             if (current == null) {
                 if (chapters.isEmpty())
                     item {
-                        Panel {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Cover(0, Modifier.size(88.dp, 118.dp))
-                                Spacer(Modifier.width(16.dp))
-                                Column {
-                                    Title("Your chapters", 22)
-                                    Note("Gather related pages in a chapter.")
-                                    TextButton(onClick = { form(false) }) { Text("Create chapter") }
-                                }
-                            }
+                        Column(Modifier.padding(12.dp)) {
+                            Title("Your chapters", 24)
+                            Note("Gather related pages under a chapter title.")
+                            TextButton(onClick = { form(false) }) { Text("Create chapter") }
                         }
                     }
                 items(chapters, key = { it.id }) { c ->
                     Row(
                         Modifier.fillMaxWidth()
-                            .shadow(1.dp, round)
-                            .clip(round)
-                            .background(ivory.copy(alpha = .9f))
-                            .border(.8.dp, edge, round)
                             .clickable { select(c.id) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Cover(c.cover, Modifier.size(112.dp, 136.dp))
+                        Cover(c.cover, Modifier.size(38.dp, 50.dp))
                         Spacer(Modifier.width(19.dp))
                         Column(Modifier.weight(1f)) {
                             Title(c.name, 23)
@@ -96,9 +86,11 @@ fun Chapters(
                             val n = pages.count { it.chapter == c.id }
                             Note("$n " + if (n == 1) "entry" else "entries")
                         }
-                        Glyph("chevron-right", size = 20)
+                        val first = pages.indexOfFirst { it.chapter == c.id }
+                        if(first >= 0) Note("p. " + entryFolio(first)) else Glyph("chevron-right", size=16)
                         Spacer(Modifier.width(13.dp))
                     }
+                    HorizontalDivider(color=edge,thickness=.6.dp)
                 }
             } else {
                 item { Title(current.name, 27) }
@@ -170,13 +162,14 @@ fun Chapters(
 }
 
 @Composable
-fun You(book: Notebook, settings: Map<String, String>) {
+fun You(book: Notebook, settings: Map<String, String>, showPlate: Boolean = true) {
     Column {
-        Header("You")
+        Header("Personal settings")
         Column(
             Modifier.verticalScroll(rememberScrollState()).padding(17.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
+            if(showPlate) Bookplate(book,settings)
             Panel {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Title("Fonts", 22)

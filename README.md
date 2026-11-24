@@ -1,11 +1,15 @@
 # Pageheld
 
-<img src="docs/readme/pageheld-icon.png" alt="Pageheld app icon" width="112">
+<p align="center">
+  <img src="docs/readme/pageheld-icon.png" alt="Pageheld app icon" width="112">
+</p>
 
-[![Download phone edition](docs/readme/download-android.svg)](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk)
-[![Download tablet edition](docs/readme/download-tablet.svg)](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk)
+<p align="center">
+  <a href="https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk"><img src="docs/readme/download-android.svg" alt="Download phone edition"></a>
+  <a href="https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk"><img src="docs/readme/download-tablet.svg" alt="Download tablet edition"></a>
+</p>
 
-Version 1.5 · Android 9 or newer · [Phone APK](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk) · [Tablet APK](https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk)
+<p align="center">Source version 1.5.b · Android 9 or newer</p>
 
 Pageheld is a personal journal for Android. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
 
@@ -19,7 +23,7 @@ Pageheld is a personal journal for Android. Write on ruled ivory paper, keep pho
 
 ## Write your first page
 
-Tap or swipe the green cover, then choose **Write today’s page**. Start typing and your words save automatically. Return to **Journal** to find the page again. In **You → Fonts**, you can change the handwriting or adjust the text size.
+Open the cloth cover. On a landscape tablet, write directly on the right-hand page of Today. In a narrow window, choose **Write today’s page**. Writing saves automatically. The outer-edge tabs lead to Journal, Memories, Chapters, and You. Use the ribbon at the top to revisit bookmarks.
 
 - Pick a mood in **Today**. It appears on the home screen and is prefilled on new diary pages. Tap the mood on a page to change it for that entry.
 - Tap **Weather** at the top of a diary page to record what it was like outside. You can add or change this detail offline.
@@ -31,15 +35,15 @@ For a new version, use the same download link and tap **Update**. Android keeps 
 
 If you already use a development build, Android may report a signature conflict. Keep that copy installed while you export your notebook and check that you have the backup file and passphrase. Uninstalling Pageheld erases the journal stored on the device.
 
-## Phone edition
+## Quiet Hardcover
 
-![Phone cover, Today and writing page](docs/design/screenshots/overview.png)
+The source checkout includes the responsive hardcover redesign. The download badges above refer to published releases. Build this checkout to install the redesign.
 
-## Tablet edition
+![Today on a landscape tablet-sized emulator](docs/design/screenshots/hardcover/today.png)
 
-On a wide tablet such as the Galaxy Tab S8 Ultra, turn the device sideways to open a two-page spread. Tap a title in the left-hand index to write on the right. While editing, the facing page shows the previous entry when available. In a narrow window, the editor uses the full page.
+Pull an outer page edge to turn, or use the arrows beside the page number. The top-left book icon closes the cover. A wide window opens two facing pages. In portrait or split screen, the book adapts to the available width. **Chapters** opens the contents, and **You** holds the ownership bookplate and notebook settings.
 
-![Tablet cover and open diary with facing pages in landscape](docs/design/screenshots/tablet/overview.png)
+[Rendering, verification, screenshots, and installation](docs/QUIET_HARDCOVER.md)
 
 ## Build from source
 
@@ -54,7 +58,7 @@ The debug installers are under `app/build/outputs/apk/phone/debug/` and `app/bui
 ## Using the notebook
 
 - Swipe or tap the cover to open your notebook. **You** contains the opening-cover and reduced-motion switches. Use the editor header arrows to turn between saved pages.
-- Open **Write today’s page** from Today or **+** from Journal. Edits save automatically. Use **Aa** for paper and writing preferences and the notebook icon for templates and chapters.
+- Write on **Today’s story**, or use **+** in Journal for a separate entry. Edits save automatically. Use **Aa** for paper and writing preferences and the notebook icon for templates and chapters.
 - Choose a photo or video in the Android picker. Pageheld copies the selected file into its private storage. Tap its thumbnail to reopen it.
 - Search or filter in **Journal**. The calendar selects a date. Page options include bookmarking and deletion.
 - Create a chapter with **+** in **Chapters**. Open a chapter for rename, reorder and delete actions. Its pages stay in Journal when the chapter is removed.

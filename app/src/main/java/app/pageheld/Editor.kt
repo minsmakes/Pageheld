@@ -32,9 +32,9 @@ import kotlinx.coroutines.*
 fun mediaDir(book: Notebook) = File(book.context.filesDir, "attachments").apply { mkdirs() }
 
 @Composable
-fun Thumbnail(file: File, modifier: Modifier, large: Boolean = false) {
+fun Thumbnail(file: File, modifier: Modifier, large: Boolean = false, print: Boolean = false) {
     val bitmap by
-        produceState<android.graphics.Bitmap?>(null, file, large) {
+        produceState<android.graphics.Bitmap?>(null, file, large, print) {
             value =
                 withContext(Dispatchers.IO) {
                     runCatching {
@@ -61,7 +61,7 @@ fun Thumbnail(file: File, modifier: Modifier, large: Boolean = false) {
                                         max(
                                             1,
                                             max(info.size.width, info.size.height) /
-                                                (if (large) 1400 else 250),
+                                                (if (large) 1600 else if (print) 960 else 320),
                                         )
                                     )
                                 }
@@ -70,7 +70,15 @@ fun Thumbnail(file: File, modifier: Modifier, large: Boolean = false) {
                 }
         }
     Box(
-        modifier.clip(RoundedCornerShape(if (large) 2.dp else 7.dp))
+        modifier
+            .then(
+                if (print)
+                    Modifier.aspectRatio(
+                        bitmap?.let { (it.width.toFloat() / it.height).coerceIn(.7f, 2.1f) } ?: 1.5f
+                    )
+                else Modifier
+            )
+            .clip(RoundedCornerShape(if (large || print) 1.dp else 4.dp))
             .background(if (large) Color(0xffeee8db) else pale),
         contentAlignment = Alignment.Center,
     ) {
@@ -79,12 +87,14 @@ fun Thumbnail(file: File, modifier: Modifier, large: Boolean = false) {
                 it.asImageBitmap(),
                 if (file.extension == "video") "Attached video" else "Attached photograph",
                 Modifier.fillMaxSize(),
-                contentScale = if (large) ContentScale.Fit else ContentScale.Crop,
+                contentScale = if (large || print) ContentScale.Fit else ContentScale.Crop,
             )
         }
         if (file.extension == "video") {
-            Box(Modifier.size(32.dp).background(ink.copy(alpha = .78f), CircleShape),
-                contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.size(32.dp).background(ink.copy(alpha = .78f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
                 Glyph("play", tint = ivory, size = 17)
             }
         } else if (bitmap == null) Glyph("image")
@@ -186,9 +196,18 @@ fun Editor(
     locations: List<DiaryLocation>,
     previous: (() -> Unit)?,
     next: (() -> Unit)?,
+    daily: Boolean = false,
+    active: Boolean = true,
+    initialAttachment: String = "",
+    onImporting: (Boolean) -> Unit = {},
+    onDeleted: (() -> Unit)? = null,
     back: () -> Unit,
 ) {
     var page by remember(initial.id) { mutableStateOf(initial) }
+    LaunchedEffect(initial.mood) {
+        if (daily && page.title.isEmpty() && page.body.isEmpty() && page.files().isEmpty())
+            page = page.copy(mood = initial.mood)
+    }
     var dragHintDismissed by rememberSaveable { mutableStateOf(false) }
     val past = remember { mutableStateListOf<Pair<String, String>>() }
     val future = remember { mutableStateListOf<Pair<String, String>>() }
@@ -209,12 +228,25 @@ fun Editor(
         page = next
         book.save(next)
     }
+    fun restoreText(
+        from: MutableList<Pair<String, String>>,
+        to: MutableList<Pair<String, String>>,
+    ) {
+        if (from.isEmpty()) return
+        to.add(page.title to page.body)
+        val (title, body) = from.removeAt(from.lastIndex)
+        change(page.copy(title = title, body = body))
+    }
     var sheet by rememberSaveable { mutableStateOf("") }
-    var viewing by rememberSaveable { mutableStateOf("") }
+    var viewing by rememberSaveable { mutableStateOf(initialAttachment) }
     var removing by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var importing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    DisposableEffect(importing, active) {
+        if (active && importing) onImporting(true)
+        onDispose { if (active && importing) onImporting(false) }
+    }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri != null)
@@ -269,7 +301,7 @@ fun Editor(
             "Wide" -> 40
             else -> 25
         }.dp
-    val font = notebookFont(book.context, settings["font"])
+    val font = notebookFont(book.context, settings["font"] ?: "Serif")
     var bodyY by remember { mutableFloatStateOf(0f) }
     var baseline by remember { mutableFloatStateOf(0f) }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -277,29 +309,35 @@ fun Editor(
         keyboard?.hide()
         sheet = name
     }
-    androidx.activity.compose.BackHandler { if (!importing) back() }
+    androidx.activity.compose.BackHandler(enabled = active && !daily) { if (!importing) back() }
+    val compact = LocalCompactPage.current
+    val fieldTitleSize = if (daily) uiSp(if (compact) 24 else 32) else titleSize
     Column(Modifier.fillMaxSize().background(color)) {
-        Header("", { Action("arrow-left", "Close page", !importing, back) }) {
-            if (previous != null || next != null) {
-                Box(Modifier.graphicsLayer { scaleX = -1f }) {
-                    Action("chevron-right", "Previous page", previous != null && !importing) {
-                        previous?.invoke()
+        if (!daily)
+            BoxWithConstraints {
+                val shortHeader = maxWidth < 340.dp
+                Header("", { Action("arrow-left", "Close page", !importing, back) }) {
+                    if (previous != null || next != null) {
+                        Box(Modifier.graphicsLayer { scaleX = -1f }) {
+                            Action(
+                                "chevron-right",
+                                "Previous page",
+                                previous != null && !importing,
+                            ) {
+                                previous?.invoke()
+                            }
+                        }
+                        Action("chevron-right", "Next page", next != null && !importing) {
+                            next?.invoke()
+                        }
                     }
+                    if (!shortHeader)
+                        Action("undo-2", "Undo", past.isNotEmpty()) { restoreText(past, future) }
+                    if (!shortHeader)
+                        Action("redo-2", "Redo", future.isNotEmpty()) { restoreText(future, past) }
+                    Action("ellipsis-vertical", "Page options") { tools("Page options") }
                 }
-                Action("chevron-right", "Next page", next != null && !importing) { next?.invoke() }
             }
-            Action("undo-2", "Undo", past.isNotEmpty()) {
-                future.add(page.title to page.body)
-                val p = past.removeAt(past.lastIndex)
-                change(page.copy(title = p.first, body = p.second))
-            }
-            Action("redo-2", "Redo", future.isNotEmpty()) {
-                past.add(page.title to page.body)
-                val p = future.removeAt(future.lastIndex)
-                change(page.copy(title = p.first, body = p.second))
-            }
-            Action("ellipsis-vertical", "Page options") { tools("Page options") }
-        }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val minimum = maxHeight
             val scroll = rememberScrollState()
@@ -313,6 +351,7 @@ fun Editor(
                         interval,
                         margin,
                         bodyY + baseline + with(density) { 2.dp.toPx() },
+                        ruleFrom = bodyY,
                     )
             ) {
                 PageMediaSurface(
@@ -320,7 +359,8 @@ fun Editor(
                     book,
                     minimum,
                     scroll,
-                    showDragHint = !dragHintDismissed && settings["attachmentDragHintSeen"] != "true",
+                    showDragHint =
+                        !dragHintDismissed && settings["attachmentDragHintSeen"] != "true",
                     view = { viewing = it },
                     place = { name, position ->
                         if (position != null) dismissDragHint()
@@ -328,26 +368,25 @@ fun Editor(
                     },
                 ) {
                     Column(Modifier.padding(start = margin + 12.dp, end = 18.dp, top = 18.dp)) {
-                        Note(
-                            stamp(page.created, "yMMMEd") +
-                                "  ·  " +
-                                android.text.format.DateFormat.getTimeFormat(book.context)
-                                    .format(java.util.Date(page.created))
-                        )
-                        Spacer(Modifier.height(24.dp))
+                        if (daily) Imprint("Daily entry")
+                        else
+                            Note(
+                                stamp(page.created, "yMMMEd") +
+                                    "  ·  " +
+                                    android.text.format.DateFormat.getTimeFormat(book.context)
+                                        .format(java.util.Date(page.created))
+                            )
+                        Spacer(Modifier.height(if (daily) 10.dp else 24.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             BasicTextField(
                                 page.title,
                                 { change(page.copy(title = it), true) },
-                                Modifier.width(IntrinsicSize.Max)
-                                    .widthIn(min = 130.dp, max = 245.dp)
-                                    .weight(1f, fill = false)
-                                    .semantics { contentDescription = "Page title" },
+                                Modifier.weight(1f).semantics { contentDescription = "Page title" },
                                 textStyle =
                                     TextStyle(
                                         fontSynthesis = FontSynthesis.None,
-                                        fontFamily = font,
-                                        fontSize = titleSize,
+                                        fontFamily = serif,
+                                        fontSize = fieldTitleSize,
                                         color = ink,
                                     ),
                                 singleLine = true,
@@ -356,38 +395,44 @@ fun Editor(
                                     Box {
                                         if (page.title.isEmpty())
                                             Text(
-                                                "Untitled page",
+                                                if (daily) "Today’s story" else "Untitled page",
                                                 maxLines = 1,
-                                                color = muted,
-                                                fontSize = titleSize,
-                                                fontFamily = font,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis,
+                                                color = ink,
+                                                fontSize = fieldTitleSize,
+                                                fontFamily = serif,
                                             )
                                         inner()
                                     }
                                 },
                             )
                             Spacer(Modifier.width(6.dp))
-                            Glyph("sprout", tint = sage, size = 25)
+                            if (!compact) Glyph("sprout", tint = sage, size = 25)
                         }
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Tag(page.mood.ifBlank { "Mood" }, icon = "smile") { tools("Mood") }
-                            Tag(page.weather.ifBlank { "Weather" }, icon = if (page.weather == "Sunny") "sun" else "cloud") {
-                                tools("Weather")
-                            }
-                            Tag(
-                                when (locations.size) {
-                                    0 -> "Places"
-                                    1 -> locations.first().label()
-                                    else -> "${locations.size} places"
-                                },
-                                icon = "map-pin",
+                        if (!daily)
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                tools("Place")
+                                Tag(page.mood.ifBlank { "Mood" }, icon = "smile") { tools("Mood") }
+                                Tag(
+                                    page.weather.ifBlank { "Weather" },
+                                    icon = if (page.weather == "Sunny") "sun" else "cloud",
+                                ) {
+                                    tools("Weather")
+                                }
+                                Tag(
+                                    when (locations.size) {
+                                        0 -> "Places"
+                                        1 -> locations.first().label()
+                                        else -> "${locations.size} places"
+                                    },
+                                    icon = "map-pin",
+                                ) {
+                                    tools("Place")
+                                }
                             }
-                        }
                     }
                     Spacer(Modifier.height(18.dp))
                     BasicTextField(
@@ -436,17 +481,17 @@ fun Editor(
             }
         }
         Row(
-            Modifier.fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-                .shadow(2.dp, round)
-                .background(ivory, round),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).background(color),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             Action("type", "Paper and text") { tools("Appearance") }
             Action("import-media", "Attach photo or video", !importing) {
-                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                picker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                )
             }
             Action("notebook", "Template and chapter") { tools("Organize page") }
+            if (daily) Action("ellipsis-vertical", "Page options") { tools("Page options") }
         }
     }
     if (sheet == "Place") LocationNotebook(page, book, locations) { sheet = "" }
@@ -493,10 +538,14 @@ fun Editor(
                             }
                         }
                         if (page.weather.isNotEmpty()) {
-                            TextButton(onClick = {
-                                change(page.copy(weather = ""))
-                                sheet = ""
-                            }) { Text("Clear weather") }
+                            TextButton(
+                                onClick = {
+                                    change(page.copy(weather = ""))
+                                    sheet = ""
+                                }
+                            ) {
+                                Text("Clear weather")
+                            }
                         }
                     }
                     "Organize page" -> {
@@ -567,6 +616,19 @@ fun Editor(
                         }
                     }
                     else -> {
+                        if (daily) {
+                            listOf("Mood", "Weather", "Place").forEach { name ->
+                                Tag(name) { tools(name) }
+                            }
+                        }
+                        Row {
+                            Action("undo-2", "Undo", past.isNotEmpty()) {
+                                restoreText(past, future)
+                            }
+                            Action("redo-2", "Redo", future.isNotEmpty()) {
+                                restoreText(future, past)
+                            }
+                        }
                         Tag(if (page.starred) "Remove bookmark" else "Bookmark page") {
                             change(page.copy(starred = !page.starred))
                             sheet = ""
@@ -579,33 +641,44 @@ fun Editor(
                 }
             }
         }
-    if (viewing.isNotBlank() && viewing in page.files())
+    if (active && viewing.isNotBlank() && viewing in page.files())
         Dialog(onDismissRequest = { viewing = "" }) {
             Column(Modifier.background(ivory, round).padding(12.dp)) {
                 val file = File(mediaDir(book), viewing)
-                val previewHeight = minOf(360.dp, (LocalConfiguration.current.screenHeightDp * .52f).dp)
-                MediaMount(Modifier.fillMaxWidth().height(previewHeight)) {
-                    if (file.extension == "video") AndroidView(
-                        factory = { ctx ->
-                            VideoView(ctx).apply {
-                                setVideoPath(file.path)
-                                setMediaController(
-                                    android.widget.MediaController(ctx).also {
-                                        it.setAnchorView(this)
-                                    }
-                                )
-                                start()
-                            }
+                val previewHeight =
+                    minOf(
+                        360.dp,
+                        with(LocalDensity.current) {
+                            LocalWindowInfo.current.containerSize.height.toDp() * .52f
                         },
-                        modifier = Modifier.fillMaxSize().background(Color(0xffeee8db)),
                     )
+                MediaMount(Modifier.fillMaxWidth().height(previewHeight)) {
+                    if (file.extension == "video")
+                        AndroidView(
+                            factory = { ctx ->
+                                VideoView(ctx).apply {
+                                    setVideoPath(file.path)
+                                    setMediaController(
+                                        android.widget.MediaController(ctx).also {
+                                            it.setAnchorView(this)
+                                        }
+                                    )
+                                    start()
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize().background(Color(0xffeee8db)),
+                        )
                     else Thumbnail(file, Modifier.fillMaxSize(), large = true)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = {
-                        removing = viewing
-                        viewing = ""
-                    }) { Text("Remove attachment", color = MaterialTheme.colorScheme.error) }
+                    TextButton(
+                        onClick = {
+                            removing = viewing
+                            viewing = ""
+                        }
+                    ) {
+                        Text("Remove attachment", color = MaterialTheme.colorScheme.error)
+                    }
                     TextButton(onClick = { viewing = "" }) { Text("Close") }
                 }
             }
@@ -614,23 +687,33 @@ fun Editor(
         AlertDialog(
             onDismissRequest = { removing = "" },
             title = { Title("Remove this attachment?") },
-            text = { Text("This removes the notebook’s copy and any links to it from places on this page.") },
+            text = {
+                Text(
+                    "This removes the notebook’s copy and any links to it from places on this page."
+                )
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    val filename = removing
-                    removing = ""
-                    if (filename in page.files()) {
-                        val updated = page.copy(
-                            media = page.files().filter { it != filename }.joinToString("\n"),
-                            mediaPositions = page.withMediaPosition(filename, null),
-                        )
-                        page = updated
-                        book.queue {
-                            book.dao.saveAfterRemovingAttachment(updated, filename)
-                            File(mediaDir(book), filename).delete()
+                TextButton(
+                    onClick = {
+                        val filename = removing
+                        removing = ""
+                        if (filename in page.files()) {
+                            val updated =
+                                page.copy(
+                                    media =
+                                        page.files().filter { it != filename }.joinToString("\n"),
+                                    mediaPositions = page.withMediaPosition(filename, null),
+                                )
+                            page = updated
+                            book.queue {
+                                book.dao.saveAfterRemovingAttachment(updated, filename)
+                                File(mediaDir(book), filename).delete()
+                            }
                         }
                     }
-                }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                ) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
             },
             dismissButton = { TextButton(onClick = { removing = "" }) { Text("Cancel") } },
         )
@@ -647,7 +730,7 @@ fun Editor(
                                 book.dao.removePage(removed.id)
                                 removed.files().forEach { File(mediaDir(book), it).delete() }
                             }
-                            back()
+                            (onDeleted ?: back)()
                         }
                         error = ""
                     }

@@ -38,7 +38,7 @@ internal fun writingSize(settings: Map<String, String>) =
     settings["writingSize"]?.toIntOrNull()?.coerceIn(12, 34) ?: 18
 
 internal fun displaySize(settings: Map<String, String>) =
-    settings["displaySize"]?.toIntOrNull()?.coerceIn(75, 125) ?: 90
+    settings["displaySize"]?.toIntOrNull()?.coerceIn(75, 125) ?: 100
 
 private fun Context.fontDirectory() = File(filesDir, "fonts")
 
@@ -147,18 +147,18 @@ internal fun FontOptions(book: Notebook, settings: Map<String, String>, includeD
     if (message.isNotBlank()) Note(message)
     val options = fontLabel + imported.associate { it.name to it.name.substringAfter("--").substringBeforeLast('.') }
     if (includeDisplay) {
-        FontChoice("Display font", settings["displayFont"], options) { book.setting("displayFont", it) }
+        FontChoice("Display font", settings["displayFont"] ?: "Sans", options) { book.setting("displayFont", it) }
         SizeChoice("Display text", displaySize(settings), 75..125, 5, "%") {
             book.setting("displaySize", it.toString())
         }
     }
-    FontChoice("Writing font", settings["font"], options) { book.setting("font", it) }
+    FontChoice("Writing font", settings["font"] ?: "Serif", options) { book.setting("font", it) }
     SizeChoice("Writing text", writingSize(settings), 12..34, 1, " sp") {
         book.setting("writingSize", it.toString())
     }
     Text(
         "오늘의 기록 · A quiet page",
-        fontFamily = notebookFont(book.context, settings["font"]),
+        fontFamily = notebookFont(book.context, settings["font"] ?: "Serif"),
         style = LocalTextStyle.current.copy(fontSynthesis = FontSynthesis.None),
         fontSize = writingSize(settings).sp,
         lineHeight = (writingSize(settings) * 1.5f).sp,

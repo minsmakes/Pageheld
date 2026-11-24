@@ -19,7 +19,7 @@ import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -117,12 +117,19 @@ class NotebookExperienceTest {
                         photoBounds(node.getChild(it))
                     }
                 }
-                val bounds = requireNotNull(photoBounds(automation.rootInActiveWindow))
+                val imageDeadline = SystemClock.elapsedRealtime() + 8000
+                var imageBounds = photoBounds(automation.rootInActiveWindow)
+                while ((imageBounds == null || imageBounds.isEmpty) && SystemClock.elapsedRealtime() < imageDeadline) {
+                    SystemClock.sleep(100)
+                    imageBounds = photoBounds(automation.rootInActiveWindow)
+                }
+                val bounds = requireNotNull(imageBounds) { "Attachment preview did not finish decoding" }
                 val start = SystemClock.uptimeMillis()
                 fun touch(action: Int, step: Int) {
                     val event = MotionEvent.obtain(
                         start, SystemClock.uptimeMillis(), action,
-                        bounds.exactCenterX() + step * bounds.width() / 7f,
+                        bounds.exactCenterX() + step * maxOf(bounds.width() / 7f,
+                            context.resources.displayMetrics.widthPixels * .035f),
                         bounds.exactCenterY() - step * bounds.height() / 9f,
                         0,
                     )
@@ -134,19 +141,20 @@ class NotebookExperienceTest {
                     }
                 }
                 touch(MotionEvent.ACTION_DOWN, 0)
-                SystemClock.sleep(700)
+                SystemClock.sleep(android.view.ViewConfiguration.getLongPressTimeout().toLong()+300)
                 for (step in 1..5) {
                     touch(MotionEvent.ACTION_MOVE, step)
                     SystemClock.sleep(30)
                 }
                 touch(MotionEvent.ACTION_UP, 5)
                 val saved = runBlocking {
-                    withTimeout(5_000) {
+                    withTimeoutOrNull(5_000) {
                         book.dao.pages().first { it.any { page -> page.mediaPositions.isNotBlank() } }
                             .single().mediaPositionsByFile().getValue(photo.name)
                     }
                 }
-                assertTrue(saved.across > .08f)
+                assertNotNull("Photo drag did not persist at $bounds", saved)
+                assertTrue(saved!!.across > .08f)
                 automation.waitForIdle(250, 5000)
                 assertFalse(hint in texts(automation.rootInActiveWindow))
 
@@ -166,8 +174,15 @@ class NotebookExperienceTest {
                     while (SystemClock.elapsedRealtime() < timeout) {
                         val node = find(automation.rootInActiveWindow)
                         if (node != null) {
-                            tap(Rect().also(node::getBoundsInScreen))
-                            return
+                            // The modal can still be settling when its label first appears.
+                            // Dispatch the labelled control's accessibility action instead of
+                            // tapping a coordinate that the animation can move underneath us.
+                            var action: AccessibilityNodeInfo? = node
+                            while (action != null && !action.isClickable) action = action.parent
+                            if (action?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
+                                automation.waitForIdle(300, 5000)
+                                return
+                            }
                         }
                         SystemClock.sleep(100)
                     }
@@ -177,11 +192,12 @@ class NotebookExperienceTest {
                 tapLabel("Remove attachment")
                 tapLabel("Remove")
                 val updated = runBlocking {
-                    withTimeout(5_000) {
+                    withTimeoutOrNull(5_000) {
                         book.dao.pages().first { it.single().files().isEmpty() }.single()
                     }
                 }
-                assertEquals(page.body, updated.body)
+                assertNotNull("Confirmed removal did not persist",updated)
+                assertEquals(page.body, updated!!.body)
                 assertTrue(updated.mediaPositionsByFile().isEmpty())
                 assertEquals("", runBlocking { book.dao.locationsFor(page.id).single().media })
                 val deletionDeadline = SystemClock.elapsedRealtime() + 5000
@@ -192,12 +208,12 @@ class NotebookExperienceTest {
                 tapLabel("Weather")
                 tapLabel("Rainy")
                 runBlocking {
-                    withTimeout(5_000) { book.dao.pages().first { it.single().weather == "Rainy" } }
+                    assertNotNull("Rainy weather did not persist",withTimeoutOrNull(5_000) { book.dao.pages().first { it.single().weather == "Rainy" } })
                 }
                 tapLabel("Rainy")
                 tapLabel("Clear weather")
                 runBlocking {
-                    withTimeout(5_000) { book.dao.pages().first { it.single().weather.isEmpty() } }
+                    assertNotNull("Cleared weather did not persist",withTimeoutOrNull(5_000) { book.dao.pages().first { it.single().weather.isEmpty() } })
                 }
             }
         } finally {

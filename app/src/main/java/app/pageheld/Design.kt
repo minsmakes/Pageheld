@@ -10,16 +10,17 @@ import androidx.compose.ui.draw.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.*
 import kotlin.math.*
 
-val ink = Color(0xff30362e)
-val muted = Color(0xff6e7066)
-val sage = Color(0xff617655)
+val ink = Color(0xff343a31)
+val muted = Color(0xff63695e)
+val sage = Color(0xff59664e)
 val pale = Color(0xffeceddf)
-val ivory = Color(0xfffcf9f2)
-val edge = Color(0xffd9cfc0)
+val ivory = Color(0xfffaf6eb)
+val edge = Color(0xffddd4c1)
 val swatches =
     listOf(ivory, Color(0xfff5e9d6), Color(0xfff4e3de), Color(0xffe4ebef), Color(0xffe5eadc))
 val serif = FontFamily(Font(R.font.caslon_regular,FontWeight.Normal), Font(R.font.caslon_italic,FontWeight.Normal,FontStyle.Italic))
@@ -100,10 +101,11 @@ fun Action(name: String, label: String, enabled: Boolean = true, click: () -> Un
 fun Title(text: String, size: Int = 20, italic: Boolean = false) {
     Text(
         text,
+        modifier = if(size>=22) Modifier.semantics { heading() } else Modifier,
         color = ink,
-        fontFamily = LocalDisplayFont.current,
-        fontSize = uiSp(if (size >= 20) size - 2 else size - 1),
-        lineHeight = uiSp(size + 3),
+        fontFamily = serif,
+        fontSize = uiSp(size),
+        lineHeight = uiSp(size + 8),
         letterSpacing = 0.sp,
         fontWeight = FontWeight.Normal,
         fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
@@ -119,9 +121,7 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
     Column(
         modifier
             .fillMaxWidth()
-            .shadow(.4.dp, round)
-            .background(Color(0xfffcf9f2), round)
-            .border(.55.dp, edge, round)
+            .background(ivory)
             .padding(12.dp),
         content = content,
     )
@@ -192,6 +192,7 @@ fun Modifier.paper(
     interval: Dp = 26.dp,
     margin: Dp = 0.dp,
     phase: Float = 0f,
+    ruleFrom: Float = 0f,
 ): Modifier = drawBehind {
     drawRect(
         Brush.horizontalGradient(
@@ -207,6 +208,7 @@ fun Modifier.paper(
     val step = interval.toPx().coerceAtLeast(4f)
     val rule = Color(0xffaca99f).copy(alpha = if (margin.value > 0) .52f else .32f)
     var y = ((phase % step) + step) % step
+    if (y < ruleFrom) y += ceil((ruleFrom - y) / step) * step
     while (y < size.height && style != "Blank" && style != "Scrapbook") {
         if (style == "Dot Grid") {
             var x = step / 2

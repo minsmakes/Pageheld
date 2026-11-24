@@ -1,5 +1,8 @@
 # Pageheld implementation status
 
+The current checkout implements [Quiet Hardcover](QUIET_HARDCOVER.md). Its report covers the new navigation, rendering, verification, and device limits. The release notes below describe earlier builds.
+
+
 ## Delivered
 
 The app opens to Today with a five-tab navigation bar. Its separate full-screen editor uses real Compose text fields, the Android keyboard, Room autosave, undo and redo for text edits, and a persistent private copy of each selected photo or video. Closing a new page without editing leaves the journal empty.

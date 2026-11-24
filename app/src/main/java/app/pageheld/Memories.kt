@@ -136,7 +136,7 @@ fun Memories(
     locations: List<DiaryLocation>,
     open: (Page) -> Unit,
 ) {
-    var list by rememberSaveable { mutableStateOf(false) }
+    var list by rememberSaveable { mutableStateOf(true) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var q by rememberSaveable { mutableStateOf("") }
     var scopePlace by rememberSaveable { mutableStateOf<String?>(null) }
@@ -162,7 +162,7 @@ fun Memories(
     val pins = places.values.mapNotNull { it.first().pin() }
     val preview = places[selected]?.firstOrNull() ?: found.firstOrNull()
     Column {
-        Header("Memories") {
+        Header("Places") {
             Action("search", "Search memories") {
                 searching = !searching
                 if (!searching) q = ""
@@ -310,3 +310,16 @@ private fun photoMarker(file: File, density: Float): android.graphics.Bitmap? =
             bitmap
         }
         .getOrNull()
+
+@Composable
+internal fun CompactMemories(book: Notebook,pages: List<Page>,locations: List<DiaryLocation>,
+    read: (Page)->Unit,view: (Page,String)->Unit) {
+    var places by rememberSaveable { mutableStateOf(false) }
+    Column {
+        Row(Modifier.fillMaxWidth().padding(horizontal=16.dp)) {
+            TextButton(onClick={places=false}) { Text("Album") }
+            TextButton(onClick={places=true}) { Text("Places") }
+        }
+        if(places) Memories(book,pages,locations,read) else Album(book,pages,locations,view)
+    }
+}
