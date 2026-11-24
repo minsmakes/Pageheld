@@ -9,7 +9,7 @@
   <a href="https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk"><img src="docs/readme/download-tablet.svg" alt="Download tablet edition"></a>
 </p>
 
-<p align="center">Source version 1.5.b · Android 9 or newer</p>
+<p align="center">Version 1.6 · Android 9 or newer</p>
 
 Pageheld is a personal journal for Android. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
 
@@ -37,7 +37,7 @@ If you already use a development build, Android may report a signature conflict.
 
 ## Quiet Hardcover
 
-The source checkout includes the responsive hardcover redesign. The download badges above refer to published releases. Build this checkout to install the redesign.
+Pageheld 1.6 brings the responsive Quiet Hardcover redesign to both editions.
 
 ![Today on a landscape tablet-sized emulator](docs/design/screenshots/hardcover/today.png)
 
