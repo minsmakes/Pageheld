@@ -64,6 +64,9 @@ class HardcoverNavigationTest {
     private fun stroke(
         points: List<Pair<Float, Float>>,
         pause: Long = 28,
+        stylus: Boolean = false,
+        barrel: Boolean = false,
+        cancel: Boolean = false,
         held: (Int) -> Unit = {},
     ) {
         val down = SystemClock.uptimeMillis()
@@ -71,19 +74,22 @@ class HardcoverNavigationTest {
             val action =
                 when (i) {
                     0 -> MotionEvent.ACTION_DOWN
-                    points.lastIndex -> MotionEvent.ACTION_UP
+                    points.lastIndex ->
+                        if (cancel) MotionEvent.ACTION_CANCEL else MotionEvent.ACTION_UP
                     else -> MotionEvent.ACTION_MOVE
                 }
             val pointer =
                 MotionEvent.PointerProperties().apply {
                     id = 0
-                    toolType = MotionEvent.TOOL_TYPE_FINGER
+                    toolType =
+                        if (stylus) MotionEvent.TOOL_TYPE_STYLUS else MotionEvent.TOOL_TYPE_FINGER
                 }
             val coords =
                 MotionEvent.PointerCoords().apply {
                     x = p.first
                     y = p.second
-                    pressure = 1f
+                    pressure = if (stylus) .2f + .8f * i / points.lastIndex.coerceAtLeast(1) else 1f
+                    if (stylus) setAxisValue(MotionEvent.AXIS_TILT, .45f)
                     size = .1f
                 }
             val event =
@@ -95,12 +101,12 @@ class HardcoverNavigationTest {
                     arrayOf(pointer),
                     arrayOf(coords),
                     0,
-                    0,
+                    if (barrel) MotionEvent.BUTTON_STYLUS_PRIMARY else 0,
                     1f,
                     1f,
                     0,
                     0,
-                    InputDevice.SOURCE_TOUCHSCREEN,
+                    if (stylus) InputDevice.SOURCE_STYLUS else InputDevice.SOURCE_TOUCHSCREEN,
                     0,
                 )
             try {
@@ -114,9 +120,165 @@ class HardcoverNavigationTest {
     }
 
     private fun tap(label: String) {
+        // Wait for popup exit and toolbar scrolling before resolving screen coordinates.
+        automation.waitForIdle(200, 4000)
+        val tools =
+            listOf(
+                "Type",
+                "Pen",
+                "Eraser",
+                "Photo",
+                "Mood",
+                "Weather",
+                "Place",
+                "Undo",
+                "Redo",
+                "More",
+            )
+        if (label in tools && find(label) == null) {
+            val visible = tools.firstOrNull { find(it) != null }
+            if (visible != null) {
+                val y = bounds(visible).exactCenterY()
+                val width = instrument.targetContext.resources.displayMetrics.widthPixels
+                val towardEnd = tools.indexOf(label) > tools.indexOf(visible)
+                stroke(
+                    (0..10).map { i ->
+                        width * (if (towardEnd) .85f - .07f * i else .15f + .07f * i) to y
+                    }
+                )
+                automation.waitForIdle(150, 3000)
+            }
+        }
         val r = bounds(label)
         val at = r.exactCenterX() to r.exactCenterY()
         stroke(listOf(at, at))
+    }
+
+    @Test
+    fun inkOnTemporarySheetCanBeEditedDeletedAndRestored() {
+        val context = instrument.targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, NotebookDb::class.java).build()
+        val book = Notebook(context, db)
+        val seed =
+            Page(body = "On the first sheet", notebookLayout = DiaryLayout(mode = "Pen").encode())
+        runBlocking { book.dao.save(seed) }
+        fun awaitPage(predicate: (DiaryLayout) -> Boolean): DiaryLayout = runBlocking {
+            kotlinx.coroutines.withTimeout(8000) {
+                DiaryLayout.read(
+                    book.dao.pages().first { predicate(DiaryLayout.read(it.single())) }.single()
+                )
+            }
+        }
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { host ->
+                    host.setContent {
+                        PageheldTheme(book, emptyMap()) {
+                            DiaryEditor(
+                                seed,
+                                book,
+                                emptyList(),
+                                emptyList(),
+                                emptyMap(),
+                                true,
+                                "",
+                                {},
+                            ) {}
+                        }
+                    }
+                }
+                val spread =
+                    if (find("Ink page 2") != null) 2
+                    else {
+                        node("Ink page 1")
+                        if (find("Ink page 2") != null) 2 else 1
+                    }
+                val first = bounds("Ink page 1")
+                fun swipe(distance: Float) {
+                    val x = first.left + first.width() * .80f
+                    val y = first.top + first.height() * .38f
+                    stroke((0..12).map { i -> x - first.width() * distance * i / 12 to y }, 20)
+                }
+                swipe(.12f)
+                SystemClock.sleep(550)
+                node("Ink page 1")
+                swipe(.65f)
+                val paper = bounds("Ink page ${spread+1}")
+                val x = paper.left + paper.width() * .24f
+                val y = paper.top + paper.height() * .46f
+                val length = paper.width() * .48f
+                stroke((0..12).map { i -> x + length * i / 12 to y }, stylus = true)
+                awaitPage {
+                    it.sheet == spread && it.lines.size == 1 && it.sheetIds.size >= spread + 1
+                }
+                tap("Eraser")
+                tap("Eraser")
+                tap("Area eraser")
+                closeMenu()
+                stroke(listOf(x + length / 2 to y - 35, x + length / 2 to y + 35), stylus = true)
+                awaitPage { it.lines.size == 2 }
+                tap("Undo")
+                awaitPage { it.lines.size == 1 }
+                tap("Redo")
+                awaitPage { it.lines.size == 2 }
+                tap("Pen")
+                val prior = awaitPage { it.mode == "Pen" && it.lines.size == 2 }
+                stroke(listOf(x to y - 50, x + 20 to y - 50), stylus = true, cancel = true)
+                stroke(
+                    listOf(x + length / 4 to y - 30, x + length / 4 to y + 30),
+                    stylus = true,
+                    barrel = true,
+                )
+                val erased = awaitPage { it.lines.size == 3 && it.mode == "Pen" }
+                assertEquals(prior.pen(), erased.pen())
+                stroke(listOf(x to y - 60, x + 30 to y - 60), stylus = true)
+                awaitPage { it.lines.size == 4 }
+                tap("Undo")
+                awaitPage { it.lines.size == 3 }
+                tap("Undo")
+                awaitPage { it.lines == prior.lines }
+                tap("More")
+                tap("Lasso selection")
+                awaitPage { it.mode == "Lasso" }
+                node("Ink page ${spread+1}")
+                automation.waitForIdle(180, 3000)
+                val left = x - 18
+                val right = x + length + 18
+                stroke(
+                    listOf(
+                        left to y - 25,
+                        right to y - 25,
+                        right to y + 25,
+                        left to y + 25,
+                        left to y - 25,
+                    ),
+                    stylus = true,
+                )
+                tap("Selection")
+                tap("Duplicate")
+                awaitPage { it.lines.size == 4 }
+                tap("More")
+                tap((if (spread == 2) "Delete left page" else "Delete page") + " · ${spread+1}")
+                node("Delete page ${spread+1}?")
+                tap("Cancel")
+                tap("More")
+                tap((if (spread == 2) "Delete left page" else "Delete page") + " · ${spread+1}")
+                tap("Delete")
+                awaitPage { it.lines.isEmpty() }
+                tap("Undo")
+                awaitPage { it.lines.size == 4 }
+                assertEquals(seed.body, runBlocking { book.dao.pages().first().single().body })
+            }
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun closeMenu() {
+        automation.performGlobalAction(
+            android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+        )
+        SystemClock.sleep(250)
     }
 
     @Test
@@ -155,6 +317,9 @@ class HardcoverNavigationTest {
                             listOf(
                                 it.body.length,
                                 it.body.contains("Revised"),
+                                it.body.lines().filter { line ->
+                                    line.isNotEmpty() && line != "한글과 English. A long afternoon of writing."
+                                }.take(3),
                                 DiaryLayout.read(it).sheet,
                                 it.draft,
                             )
@@ -247,6 +412,7 @@ class HardcoverNavigationTest {
                     tap("Type")
                 }
                 tap("Pen")
+                tap("Pen")
                 node("Highlight")
                 capture("pen-settings")
                 closePopup()
@@ -254,7 +420,8 @@ class HardcoverNavigationTest {
                 val x = area.exactCenterX()
                 val y = area.exactCenterY()
                 stroke(
-                    (0..16).map { i -> x + i * 4 to y + 14 * kotlin.math.sin(i * .45).toFloat() }
+                    (0..16).map { i -> x + i * 4 to y + 14 * kotlin.math.sin(i * .45).toFloat() },
+                    stylus = true,
                 )
                 saved { DiaryLayout.read(it).lines.isNotEmpty() }
                 capture("handwriting")
@@ -362,7 +529,10 @@ class HardcoverNavigationTest {
                     capture("page-turn")
                     val fraction = find("5 / 8")
                     if (fraction != null) {
+                        node("Writing page 5")
+                        automation.waitForIdle(180, 3000)
                         tap("5 / 8")
+                        node("Pages")
                         capture("page-picker")
                         closePopup()
                     }

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.*
 import java.io.File
 import kotlin.math.*
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun WritingSpread(
     session: WritingSession,
@@ -53,7 +54,9 @@ internal fun WritingSpread(
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xffe8dece))) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize().motionEventSpy(session::observeInput).background(Color(0xffe8dece))
+    ) {
         val wide = maxWidth >= 580.dp
         val span = if (wide) 2 else 1
         val inset = if (wide) 36.dp else 15.dp
@@ -101,33 +104,42 @@ internal fun WritingSpread(
                 }
             }
         val computed = remember(page.body, fit) { paginate(page.body, fit) }
-        var pinned by remember { mutableStateOf<List<TextSlice>?>(null) }
+        val generation = session.textGeneration
+        var pinned by remember(generation) { mutableStateOf<List<TextSlice>?>(null) }
+        var composingText by remember(generation) { mutableStateOf(false) }
+        LaunchedEffect(page.body, composingText, generation, art.mode) {
+            if (!composingText && pinned != null) {
+                // A changing suffix resets Android's edit buffer. Keep it intact across a
+                // burst of keys and settle the measured boundary once input becomes idle.
+                kotlinx.coroutines.delay(250)
+                pinned = null
+            }
+        }
         val slices = pinned ?: computed
-        val actual =
-            maxOf(
-                slices.size,
-                1 + (art.prints.values.maxOfOrNull { it.sheet } ?: -1),
-                1 + (art.lines.maxOfOrNull { it.sheet } ?: -1),
-            )
-        val total = ((actual + span - 1) / span) * span
-        val active = art.sheet.coerceIn(0, total - 1)
+        val actual = art.contentCount(slices.size)
+        val active = art.sheet.coerceAtLeast(0)
+        val total = ((maxOf(actual, active + 1) + span - 1) / span) * span
         val start = active / span * span
-        SideEffect { count(actual, slices.size) }
+        SideEffect {
+            session.sheets = slices
+            session.savedCount = actual
+            session.span = span
+            count(actual, slices.size)
+        }
+        LaunchedEffect(page.id, start, span, art.prints) {
+            for ((name, pos) in art.prints) if (
+                pos.sheet in (start - span) until (start + 2 * span)
+            )
+                loadPrint(File(mediaDir(session.book), name))
+        }
         var pagePicker by remember { mutableStateOf(false) }
         var keepKeyboard by remember { mutableStateOf(false) }
         var focusPage by remember { mutableIntStateOf(-1) }
-        val turn = remember {
-            BookTurn(scope) { target ->
-                session.update(
-                    art = session.layout.copy(sheet = target.created.toInt()),
-                    record = false,
-                )
-            }
-        }
+        val turn = remember { BookTurn(scope) { target -> session.turnTo(target.created.toInt()) } }
         SideEffect { turn.motion = motion }
         fun target(sign: Int): Leaf? {
             val dest = start + sign * span
-            return if (dest in 0 until total) Leaf("Sheet", created = dest.toLong()) else null
+            return if (dest >= 0) Leaf("Sheet", created = dest.toLong()) else null
         }
         fun turnPage(sign: Int) {
             target(sign)?.let {
@@ -136,10 +148,32 @@ internal fun WritingSpread(
                 turn.jump(it, sign)
             }
         }
+        val viewport = remember(start, wide) { PaperViewport() }
+        val lookup by rememberUpdatedState<(Int) -> Leaf?> { target(it) }
+        val begin by rememberUpdatedState {
+            focus.clearFocus()
+            keyboard?.hide()
+            pinned = null
+        }
         val scroll = rememberScrollState()
         val ime = WindowInsets.ime.getBottom(density)
         LaunchedEffect(ime) { if (ime == 0) scroll.scrollTo(0) }
-        Box(Modifier.fillMaxSize().imePadding().clipToBounds().verticalScroll(scroll)) {
+        Box(
+            Modifier.fillMaxSize()
+                .imePadding()
+                .clipToBounds()
+                .diaryGestures(
+                    turn,
+                    viewport,
+                    session,
+                    span,
+                    with(density) { inset.toPx() },
+                    ime == 0,
+                    { lookup(it) },
+                    { begin() },
+                )
+                .verticalScroll(scroll, enabled = ime > 0)
+        ) {
             Box(
                 Modifier.fillMaxWidth()
                     .height(h + 16.dp)
@@ -150,19 +184,25 @@ internal fun WritingSpread(
                     Modifier.fillMaxSize()
                         .padding(horizontal = 6.dp, vertical = 4.dp)
                         .clip(if (wide) FoldedTrim else round)
+                        .graphicsLayer {
+                            scaleX = viewport.scale
+                            scaleY = viewport.scale
+                            translationX = viewport.pan.x
+                            translationY = viewport.pan.y
+                        }
                         .bindingShading(wide)
                 ) {
                     TurningLeaves(
                         Leaf("Sheet", created = start.toLong()),
                         turn,
                         wide,
-                        !session.locked && ime == 0 && art.mode == "Type",
+                        false,
                         { direction -> target(direction) },
                         inset = 0.dp,
                     ) { leaf, isCurrent ->
                         Row(Modifier.fillMaxSize()) {
                             repeat(span) { offset ->
-                                val index = leaf.created.toInt() + offset
+                                val index = leaf.created.toInt() / span * span + offset
                                 val sl =
                                     slices.getOrNull(index)
                                         ?: TextSlice(page.body.length, page.body.length)
@@ -172,16 +212,17 @@ internal fun WritingSpread(
                                         sl.end.coerceAtMost(page.body.length),
                                     )
                                 val request = remember { FocusRequester() }
-                                var field by remember {
-                                    mutableStateOf(
-                                        TextFieldValue(
-                                            raw,
-                                            TextRange(
-                                                (art.cursor - sl.start).coerceIn(0, raw.length)
-                                            ),
+                                var field by
+                                    remember(generation) {
+                                        mutableStateOf(
+                                            TextFieldValue(
+                                                raw,
+                                                TextRange(
+                                                    (art.cursor - sl.start).coerceIn(0, raw.length)
+                                                ),
+                                            )
                                         )
-                                    )
-                                }
+                                    }
                                 val shown =
                                     if (field.text == raw) field
                                     else
@@ -240,7 +281,16 @@ internal fun WritingSpread(
                                             BasicTextField(
                                                 shown,
                                                 { value ->
-                                                    if (session.locked) return@BasicTextField
+                                                    if (
+                                                        session.locked ||
+                                                            turn.target != null ||
+                                                            generation != session.textGeneration
+                                                    )
+                                                        return@BasicTextField
+                                                    if (
+                                                        index >= slices.size && value.text.isEmpty()
+                                                    )
+                                                        return@BasicTextField
                                                     val current = session.page
                                                     // IMEs can finish a composing region after its
                                                     // old sheet has left composition.
@@ -255,7 +305,7 @@ internal fun WritingSpread(
                                                         return@BasicTextField
                                                     field = value
                                                     val prefix =
-                                                        if (index >= slices.size && !stale)
+                                                        if (index >= slices.size)
                                                             "\u000c".repeat(index - slices.size + 1)
                                                         else ""
                                                     val body =
@@ -275,28 +325,9 @@ internal fun WritingSpread(
                                                             value.selection.end
                                                     val composing = value.composition != null
                                                     val delta = body.length - page.body.length
-                                                    val after =
-                                                        if (composing)
-                                                            slices.toMutableList().apply {
-                                                                while (size <= index) add(
-                                                                    TextSlice(sl.start, sl.start)
-                                                                )
-                                                                for (i in index until size) this[
-                                                                    i] =
-                                                                    if (i == index)
-                                                                        TextSlice(
-                                                                            sl.start +
-                                                                                prefix.length,
-                                                                            sl.end + delta,
-                                                                        )
-                                                                    else
-                                                                        TextSlice(
-                                                                            this[i].start + delta,
-                                                                            this[i].end + delta,
-                                                                        )
-                                                            }
+                                                    val measured =
+                                                        if (composing) slices
                                                         else paginate(body, fit)
-                                                    pinned = if (composing) after else null
                                                     val dest =
                                                         if (
                                                             composing ||
@@ -306,9 +337,25 @@ internal fun WritingSpread(
                                                         )
                                                             index
                                                         else
-                                                            after
+                                                            measured
                                                                 .indexOfLast { it.start <= cursor }
                                                                 .coerceAtLeast(0)
+                                                    composingText = composing
+                                                    pinned =
+                                                        if (
+                                                            composing ||
+                                                                dest == index &&
+                                                                    (pinned != null ||
+                                                                        value.text != shown.text)
+                                                        )
+                                                            pinTextSlices(
+                                                                slices,
+                                                                index,
+                                                                sl,
+                                                                prefix.length,
+                                                                delta,
+                                                            )
+                                                        else null
                                                     session.update(
                                                         current.copy(body = body),
                                                         session.layout.copy(
@@ -374,7 +421,9 @@ internal fun WritingSpread(
                                                         File(mediaDir(session.book), name),
                                                         pos,
                                                         selected == name,
-                                                        art.mode != "Pen" && art.mode != "Eraser",
+                                                        isCurrent &&
+                                                            art.mode in listOf("Photo", "Type"),
+                                                        gesture = { session.photoGesture = it },
                                                         choose = {
                                                             select(name)
                                                             session.update(
@@ -400,10 +449,10 @@ internal fun WritingSpread(
                                                     )
                                                 }
                                             }
-                                        InkSurface(index, session)
                                     }
+                                    InkSurface(index, session, isCurrent, viewport.scale)
                                     Text(
-                                        "${index+1} / $total",
+                                        "${index+1} / ${maxOf(total,(index/span+1)*span)}",
                                         Modifier.align(Alignment.BottomCenter)
                                             .clickable(onClickLabel = "Choose page") {
                                                 pagePicker = true
@@ -471,58 +520,23 @@ internal fun WritingSpread(
             )
         }
         if (ime == 0) {
-            val travel = with(density) { (maxWidth - inset * 2).toPx() / span }
             for (direction in listOf(-1, 1)) {
-                val destination = target(direction)
-                if (art.mode == "Type" && destination != null) {
+                if (target(direction) != null)
                     Box(
                         Modifier.align(
                                 if (direction < 0) Alignment.CenterStart else Alignment.CenterEnd
                             )
                             .fillMaxHeight()
-                            .width(inset + 8.dp)
+                            .width(inset)
                             .systemGestureExclusion()
                             .semantics {
                                 contentDescription =
                                     if (direction < 0) "Left page margin" else "Right page margin"
                             }
-                            .pointerInput(turn, destination, direction, travel) {
-                                var tracking = false
-                                detectHorizontalDragGestures(
-                                    onDragStart = { tracking = false },
-                                    onHorizontalDrag = { change, delta ->
-                                        if (
-                                            !tracking &&
-                                                -direction * delta > 0 &&
-                                                change.type == PointerType.Touch
-                                        ) {
-                                            tracking =
-                                                turn.begin(
-                                                    destination,
-                                                    direction,
-                                                    change.position.y / this.size.height,
-                                                )
-                                        }
-                                        if (tracking) {
-                                            change.consume()
-                                            turn.drag(-direction * delta / travel)
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        if (tracking) turn.finish(turn.progress >= .36f)
-                                        tracking = false
-                                    },
-                                    onDragCancel = {
-                                        if (tracking) turn.finish(false)
-                                        tracking = false
-                                    },
-                                )
-                            }
                     )
-                }
             }
             listOf(-1, 1).forEach { sign ->
-                if (target(sign) != null)
+                if (target(sign) != null && (sign < 0 || start + span < actual))
                     Box(
                         Modifier.align(if (sign < 0) Alignment.CenterStart else Alignment.CenterEnd)
                             .padding(horizontal = 2.dp)
@@ -551,29 +565,13 @@ private fun PhotoPrint(
     position: PrintPosition,
     selected: Boolean,
     interactive: Boolean,
+    gesture: (Boolean) -> Unit,
     choose: () -> Unit,
     commit: (PrintPosition) -> Unit,
     view: () -> Unit,
 ) {
-    val ratio by
-        produceState(1.4f, file) {
-            value =
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    runCatching {
-                            if (file.extension == "video") return@runCatching 1.6f
-                            var aspect = 1f
-                            android.graphics.ImageDecoder.decodeBitmap(
-                                    android.graphics.ImageDecoder.createSource(file)
-                                ) { decoder, info, _ ->
-                                    aspect = info.size.width.toFloat() / info.size.height
-                                    decoder.setTargetSize(1, 1)
-                                }
-                                .recycle()
-                            aspect
-                        }
-                        .getOrDefault(1.4f)
-                }
-        }
+    val bitmap by produceState(cachedPrint(file), file) { value = loadPrint(file) }
+    val ratio = bitmap?.let { it.width.toFloat() / it.height.coerceAtLeast(1) } ?: 1.4f
     val onChoose by rememberUpdatedState(choose)
     val onCommit by rememberUpdatedState(commit)
     val onView by rememberUpdatedState(view)
@@ -601,49 +599,56 @@ private fun PhotoPrint(
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 down.consume()
-                                var moved = false
-                                var elapsed = 0L
-                                do {
-                                    val ev = awaitPointerEvent()
-                                    val pan = ev.calculatePan()
-                                    val zoom = ev.calculateZoom()
-                                    elapsed = ev.changes.first().uptimeMillis - down.uptimeMillis
-                                    if (pan != Offset.Zero || zoom != 1f) {
-                                        val old = working
-                                        val before = widthFor(old)
-                                        val after =
-                                            minOf(
-                                                (before * zoom).coerceAtLeast(minOf(44.dp, pw)),
-                                                pw,
-                                                (ph - foot) * ratio + border,
-                                            )
-                                        val bh = (before - border) / ratio + foot
-                                        val ah = (after - border) / ratio + foot
-                                        val x =
-                                            (pw - before) * old.x +
-                                                (before - after) / 2 +
-                                                with(density) { pan.x.toDp() }
-                                        val y =
-                                            (ph - bh) * old.y +
-                                                (bh - ah) / 2 +
-                                                with(density) { pan.y.toDp() }
-                                        working =
-                                            old.copy(
-                                                width = after / pw,
-                                                x =
-                                                    if (pw > after)
-                                                        (x / (pw - after)).coerceIn(0f, 1f)
-                                                    else 0f,
-                                                y =
-                                                    if (ph > ah) (y / (ph - ah)).coerceIn(0f, 1f)
-                                                    else 0f,
-                                            )
-                                        moved = true
-                                    }
-                                    ev.changes.forEach { it.consume() }
-                                } while (ev.changes.any { it.pressed })
-                                onChoose()
-                                if (moved) onCommit(working) else if (elapsed > 500) onView()
+                                gesture(true)
+                                try {
+                                    var moved = false
+                                    var elapsed = 0L
+                                    do {
+                                        val ev = awaitPointerEvent()
+                                        val pan = ev.calculatePan()
+                                        val zoom = ev.calculateZoom()
+                                        elapsed =
+                                            ev.changes.first().uptimeMillis - down.uptimeMillis
+                                        if (pan != Offset.Zero || zoom != 1f) {
+                                            val old = working
+                                            val before = widthFor(old)
+                                            val after =
+                                                minOf(
+                                                    (before * zoom).coerceAtLeast(minOf(44.dp, pw)),
+                                                    pw,
+                                                    (ph - foot) * ratio + border,
+                                                )
+                                            val bh = (before - border) / ratio + foot
+                                            val ah = (after - border) / ratio + foot
+                                            val x =
+                                                (pw - before) * old.x +
+                                                    (before - after) / 2 +
+                                                    with(density) { pan.x.toDp() }
+                                            val y =
+                                                (ph - bh) * old.y +
+                                                    (bh - ah) / 2 +
+                                                    with(density) { pan.y.toDp() }
+                                            working =
+                                                old.copy(
+                                                    width = after / pw,
+                                                    x =
+                                                        if (pw > after)
+                                                            (x / (pw - after)).coerceIn(0f, 1f)
+                                                        else 0f,
+                                                    y =
+                                                        if (ph > ah)
+                                                            (y / (ph - ah)).coerceIn(0f, 1f)
+                                                        else 0f,
+                                                )
+                                            moved = true
+                                        }
+                                        ev.changes.forEach { it.consume() }
+                                    } while (ev.changes.any { it.pressed })
+                                    onChoose()
+                                    if (moved) onCommit(working) else if (elapsed > 500) onView()
+                                } finally {
+                                    gesture(false)
+                                }
                             }
                         }
                 )
@@ -666,117 +671,6 @@ private fun PhotoPrint(
                         drawCircle(ivory, 2.5.dp.toPx(), o)
                     }
                 }
-        }
-    }
-}
-
-@Composable
-private fun InkSurface(sheet: Int, session: WritingSession) {
-    val art = session.layout
-    var live by remember { mutableStateOf<InkLine?>(null) }
-    val enabled = art.mode in listOf("Pen", "Eraser")
-    val drawing =
-        if (!enabled) Modifier
-        else
-            Modifier.pointerInput(sheet, art.mode) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    if (session.locked) return@awaitEachGesture
-                    val brush = session.layout
-                    val erase = brush.mode == "Eraser" || down.type == PointerType.Eraser
-                    val points = mutableListOf<NibPoint>()
-                    var remaining = brush.lines
-                    fun sample(p: PointerInputChange) {
-                        val dot =
-                            NibPoint(
-                                (p.position.x / size.width).coerceIn(0f, 1f),
-                                (p.position.y / size.height).coerceIn(0f, 1f),
-                                if (p.type == PointerType.Stylus) p.pressure.coerceIn(.15f, 1.5f)
-                                else 1f,
-                            )
-                        points += dot
-                        if (erase) {
-                            val radius = 16.dp.toPx()
-                            remaining =
-                                remaining.filterNot { line ->
-                                    line.sheet == sheet &&
-                                        line.points.withIndex().any { (i, a) ->
-                                            val b = line.points.getOrElse(i + 1) { a }
-                                            val from = Offset(a.x * size.width, a.y * size.height)
-                                            val to = Offset(b.x * size.width, b.y * size.height)
-                                            val segment = to - from
-                                            val d = p.position - from
-                                            val t =
-                                                if (segment.getDistanceSquared() == 0f) 0f
-                                                else
-                                                    ((d.x * segment.x + d.y * segment.y) /
-                                                            segment.getDistanceSquared())
-                                                        .coerceIn(0f, 1f)
-                                            (d - segment * t).getDistance() < radius
-                                        }
-                                }
-                        } else {
-                            val thickness =
-                                brush.thickness *
-                                    listOf(.65f, 1f, 1.8f, 4f)[brush.nib.coerceIn(0, 3)]
-                            val color =
-                                if (brush.nib == 3) (brush.color and 0x00ffffff) or 0x60000000
-                                else brush.color
-                            live =
-                                InkLine(
-                                    sheet,
-                                    color,
-                                    thickness.dp.toPx() / size.width,
-                                    points.toList(),
-                                )
-                        }
-                    }
-                    var pointer = down.id
-                    var stylus = down.type == PointerType.Stylus || down.type == PointerType.Eraser
-                    down.consume()
-                    sample(down)
-                    try {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val pen =
-                                event.changes.firstOrNull {
-                                    it.pressed && it.type == PointerType.Stylus
-                                }
-                            if (!stylus && pen != null) {
-                                pointer = pen.id
-                                stylus = true
-                                points.clear()
-                                remaining = brush.lines
-                            }
-                            val p = event.changes.firstOrNull { it.id == pointer } ?: break
-                            if (!p.pressed) break
-                            if (p.positionChanged()) sample(p)
-                            event.changes.forEach { it.consume() }
-                        }
-                        val lines =
-                            if (erase) remaining else session.layout.lines + listOfNotNull(live)
-                        session.update(art = session.layout.copy(sheet = sheet, lines = lines))
-                    } finally {
-                        live = null
-                    }
-                }
-            }
-    Canvas(
-        Modifier.fillMaxSize().then(drawing).semantics {
-            if (enabled) contentDescription = "Ink page ${sheet+1}"
-        }
-    ) {
-        (art.lines.filter { it.sheet == sheet } + listOfNotNull(live)).forEach { stroke ->
-            val base = stroke.width * size.width
-            val color = Color(stroke.color)
-            var previous: Offset? = null
-            for (p in stroke.points) {
-                val xy = Offset(p.x * size.width, p.y * size.height)
-                val width = base * p.pressure
-                if (previous == null) drawCircle(color, width / 2, xy)
-                else drawLine(color, previous, xy, width, StrokeCap.Round)
-                previous = xy
-            }
         }
     }
 }

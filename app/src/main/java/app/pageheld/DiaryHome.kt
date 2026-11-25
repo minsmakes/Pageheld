@@ -138,8 +138,19 @@ internal fun DiaryHome(
                         chapter = chapter.takeIf { id -> chapters.any { it.id == id } },
                     )
             key(entry) {
-                DiaryEditor(
-                    seed,
+                // A rotation can recreate the editor before Room emits the preceding pen-up save.
+                val entryId=entry
+                val restored by produceState<Page?>(null,entryId) {
+                    val result=kotlinx.coroutines.CompletableDeferred<Page?>()
+                    book.queue {
+                        try { result.complete(book.dao.page(entryId)) }
+                        catch(e: Exception) { result.complete(seed);book.errors.emit("Couldn’t reload the entry. Showing the current copy.") }
+                    }
+                    value=result.await() ?: seed
+                }
+                val ready=restored
+                if(ready!=null) DiaryEditor(
+                    ready,
                     book,
                     chapters,
                     places,

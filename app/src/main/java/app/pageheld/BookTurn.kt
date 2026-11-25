@@ -238,6 +238,9 @@ internal fun TurningLeaves(
                             }
                         }
                     }
+                    // Retain the child display list so decoded photographs can update during a
+                    // fold.
+                    .graphicsLayer()
                     .paper("Blank")
                     .padding(horizontal = inset)
             ) {

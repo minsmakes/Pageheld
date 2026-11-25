@@ -25,7 +25,6 @@ val templates =
         "Workout Reflection" to "Today’s movement\n\nHow I felt afterwards",
     )
 val moods = listOf("Joyful", "Content", "Uneasy", "Low", "Sad")
-internal val diaryWeather = listOf("Sunny", "Partly cloudy", "Cloudy", "Rainy", "Stormy", "Snowy", "Foggy", "Windy")
 
 fun uid() = UUID.randomUUID().toString()
 
@@ -122,6 +121,8 @@ val locationMigration =
 @Dao
 interface JournalDao {
     @Query("SELECT * FROM Page ORDER BY created DESC") fun pages(): Flow<List<Page>>
+
+    @Query("SELECT * FROM Page WHERE id=:id") suspend fun page(id: String): Page?
 
     @Query("SELECT * FROM Chapter ORDER BY position, id") fun chapters(): Flow<List<Chapter>>
 
@@ -237,6 +238,7 @@ internal constructor(
             .build(),
 ) {
     val dao = db.journal()
+    internal val inkClipboard = androidx.compose.runtime.mutableStateOf<List<InkLine>>(emptyList())
     val settings =
         context.preferences.data.map { p ->
             p.asMap().mapKeys { it.key.name }.mapValues { it.value.toString() }
@@ -260,11 +262,13 @@ internal constructor(
 
     fun save(page: Page) = queue { dao.save(page) }
 
-    fun persist(page: Page): Deferred<Unit> {
+    fun persist(page: Page): Deferred<Unit> = persist { page }
+
+    internal fun persist(snapshot: () -> Page): Deferred<Unit> {
         val result = CompletableDeferred<Unit>()
         queue {
             try {
-                dao.save(page)
+                dao.save(snapshot())
                 result.complete(Unit)
             } catch (e: Exception) {
                 result.completeExceptionally(e)

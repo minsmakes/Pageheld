@@ -25,11 +25,17 @@ internal class WritingSession(
     initial: Page,
     val book: Notebook,
     private val scope: CoroutineScope,
+    prefs: Map<String, String> = emptyMap(),
 ) {
     var page by mutableStateOf(initial)
         private set
 
-    var layout by mutableStateOf(DiaryLayout.read(initial))
+    var layout by
+        mutableStateOf(
+            DiaryLayout.read(initial).let { art ->
+                DiaryPen.parse(prefs["lastPen"])?.applyTo(art) ?: art
+            }
+        )
         private set
 
     var status by mutableStateOf(if (initial.draft) "Draft" else "Saved")
@@ -39,6 +45,58 @@ internal class WritingSession(
     var error by mutableStateOf("")
     val past = mutableStateListOf<Pair<Page, DiaryLayout>>()
     val future = mutableStateListOf<Pair<Page, DiaryLayout>>()
+    val favoritePens =
+        mutableStateListOf<DiaryPen>().apply {
+            addAll(prefs["favoritePens"].orEmpty().split("|").mapNotNull(DiaryPen::parse))
+        }
+    var fingerInk by mutableStateOf(prefs["fingerInk"] == "true")
+    var clipboard: List<InkLine>
+        get() = book.inkClipboard.value
+        set(value) {
+            book.inkClipboard.value = value
+        }
+
+    var rawInput: android.view.MotionEvent? = null
+        private set
+
+    fun observeInput(event: android.view.MotionEvent?) {
+        rawInput?.recycle()
+        rawInput = event?.let(android.view.MotionEvent::obtain)
+    }
+
+    fun broadContact(density: Float) =
+        rawInput?.let { event ->
+            (0 until event.pointerCount).any {
+                event.getToolType(it) == android.view.MotionEvent.TOOL_TYPE_FINGER &&
+                    event.getTouchMajor(it) > 30f * density
+            }
+        } ?: false
+
+    var fingerOwner: (() -> Unit)? = null
+    var photoGesture = false
+    var finishInput: (() -> Unit)? = null
+    // Ignore late IME acknowledgements from a sheet replaced by navigation, undo or deletion.
+    var textGeneration by mutableIntStateOf(0)
+    var sheets: List<TextSlice> = emptyList()
+    var span by mutableIntStateOf(1)
+    var savedCount = 1
+
+    fun persistedLayout(art: DiaryLayout = layout) =
+        art.copy(
+            sheet = art.sheet.coerceAtMost(art.contentCount(maxOf(sheets.size, savedCount)) - 1)
+        )
+
+    fun turnTo(index: Int) {
+        flushInput()
+        textGeneration++
+        val next = layout.copy(sheet = index)
+        if (index >= savedCount) layout = next else update(art = next, record = false)
+    }
+
+    fun flushInput() {
+        finishInput?.invoke()
+    }
+
     private var revision = 0L
 
     fun update(
@@ -53,10 +111,18 @@ internal class WritingSession(
             if (past.size > 80) past.removeAt(0)
             future.clear()
         }
-        layout = art
-        page = next.copy(notebookLayout = art.encode(), draft = edited || next.draft)
+        val hasEdits =
+            next.body != page.body || art.lines !== layout.lines || art.prints !== layout.prints
+        val stored =
+            if (record && hasEdits && art.sheetIds === layout.sheetIds)
+                art.withSheetCount(maxOf(art.contentCount(sheets.size), art.sheet + 1))
+            else art
+        layout = stored
+        page = next.copy(draft = edited || next.draft)
+        val snapshot = page
+        val document = persistedLayout(stored)
         val ticket = ++revision
-        val save = book.persist(page)
+        val save = book.persist { snapshot.copy(notebookLayout = document.encode()) }
         status = "Saving…"
         scope.launch {
             try {
@@ -72,7 +138,7 @@ internal class WritingSession(
     fun addPlace(place: DiaryLocation) {
         if (locked) return
         locked = true
-        val snapshot = page.copy(draft = true, notebookLayout = layout.encode())
+        val snapshot = page.copy(draft = true, notebookLayout = persistedLayout().encode())
         val result = CompletableDeferred<Unit>()
         ++revision
         status = "Saving…"
@@ -103,20 +169,38 @@ internal class WritingSession(
     }
 
     fun undo(redo: Boolean) {
+        flushInput()
         val from = if (redo) future else past
         val to = if (redo) past else future
         if (locked || from.isEmpty()) return
+        textGeneration++
         to.add(page to layout)
         val (old, art) = from.removeAt(from.lastIndex)
-        update(old, art, record = false, edited = true)
+        update(
+            old,
+            layout
+                .pen()
+                .applyTo(art)
+                .copy(
+                    mode = layout.mode,
+                    areaEraser = layout.areaEraser,
+                    eraserSize = layout.eraserSize,
+                ),
+            record = false,
+            edited = true,
+        )
     }
 
     fun leave(complete: Boolean, destination: (Page) -> Unit) {
+        flushInput()
         if (locked) return
         locked = true
         ++revision
         val final =
-            page.copy(draft = if (complete) false else page.draft, notebookLayout = layout.encode())
+            page.copy(
+                draft = if (complete) false else page.draft,
+                notebookLayout = persistedLayout().encode(),
+            )
         val save = book.persist(final)
         status = "Saving…"
         scope.launch {
@@ -151,11 +235,8 @@ private val toolIcons =
         "redo-2",
         "ellipsis-vertical",
     )
-private val koreanTools = listOf("글쓰기", "펜", "지우개", "사진", "기분", "날씨", "장소", "실행 취소", "다시 실행", "더보기")
-private val inkColors =
-    listOf(0xff434736, 0xffab7955, 0xffe8977b, 0xffe7b83d, 0xff819a63, 0xffa095cb, 0xff7f9ec1).map {
-        it.toInt()
-    }
+private val koreanTools =
+    listOf("글쓰기", "펜", "지우개", "미디어", "기분", "날씨", "장소", "실행 취소", "다시 실행", "더보기")
 
 @Composable
 internal fun DiaryEditor(
@@ -170,7 +251,20 @@ internal fun DiaryEditor(
     close: (Page) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val session = remember(initial.id) { WritingSession(initial, book, scope) }
+    val session = remember(initial.id) { WritingSession(initial, book, scope, prefs) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(session, lifecycle) {
+        val observer =
+            androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) session.flushInput()
+            }
+        lifecycle.addObserver(observer)
+        onDispose {
+            session.flushInput()
+            session.observeInput(null)
+            lifecycle.removeObserver(observer)
+        }
+    }
     val page = session.page
     val art = session.layout
     val savingLabel =
@@ -199,7 +293,7 @@ internal fun DiaryEditor(
     fun mode(name: String) {
         focus.clearFocus()
         keyboard?.hide()
-        session.update(art = art.copy(mode = name), record = false)
+        session.update(art = session.layout.copy(mode = name), record = false)
         if (name != "Photo") selected = ""
     }
     val picker =
@@ -250,10 +344,54 @@ internal fun DiaryEditor(
                     }
                 }
         }
+    // Keep a confirmation tied to the exact sheets the user saw. A recreated viewport
+    // dismisses it, since reflow can move a paragraph across a numbered boundary.
+    var deletion by remember { mutableStateOf<SheetRemoval?>(null) }
+    fun deleteSheet(request: SheetRemoval) {
+        session.flushInput()
+        deletion = null
+        if (session.page != request.page || session.layout != request.layout) return
+        val index = request.index
+        val current = request.layout
+        if (index >= current.contentCount(request.slices.size)) {
+            session.turnTo(((index / session.span - 1) * session.span).coerceAtLeast(0))
+        } else {
+            val linked =
+                locations.filter { it.pageId == page.id }.flatMap { it.media.lines() }.toSet()
+            val (next, layout) = removeSheet(request.page, current, request.slices, index, linked)
+            session.textGeneration++
+            session.update(next, layout)
+        }
+        selected = ""
+    }
+
+    fun requestDeletion(index: Int) {
+        session.flushInput()
+        if (session.sheets.isEmpty()) return
+        val request = SheetRemoval(index, session.page, session.layout, session.sheets)
+        if (hasSheetContent(request.page, request.layout, request.slices, index)) deletion = request
+        else deleteSheet(request)
+    }
+
     fun addPage() {
+        session.flushInput()
+        session.textGeneration++
         focus.clearFocus()
-        val body = page.body + "\u000c".repeat((pageCount - textPages + 1).coerceAtLeast(1))
-        session.update(page.copy(body = body), art.copy(sheet = pageCount, cursor = body.length))
+        val body =
+            page.body +
+                "\u000c"
+                    .repeat(
+                        (maxOf(pageCount, session.layout.sheet + 1) - textPages + 1).coerceAtLeast(
+                            1
+                        )
+                    )
+        session.update(
+            page.copy(body = body),
+            session.layout.copy(
+                sheet = maxOf(pageCount, session.layout.sheet + 1),
+                cursor = body.length,
+            ),
+        )
     }
     Column(Modifier.fillMaxSize().background(ivory)) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
@@ -344,13 +482,14 @@ internal fun DiaryEditor(
                                             (name != "Undo" || session.past.isNotEmpty()) &&
                                             (name != "Redo" || session.future.isNotEmpty())
                                 ) {
+                                    session.flushInput()
                                     panel = ""
                                     when (name) {
-                                        "Type",
-                                        "Eraser" -> mode(name)
-                                        "Pen" -> {
-                                            mode(name)
-                                            panel = name
+                                        "Type" -> mode(name)
+                                        "Pen",
+                                        "Eraser" -> {
+                                            if (session.layout.mode == name) panel = name
+                                            else mode(name)
                                         }
                                         "Photo" -> {
                                             mode(name)
@@ -378,98 +517,57 @@ internal fun DiaryEditor(
                             modifier = Modifier.widthIn(max = 320.dp),
                         ) {
                             when (name) {
-                                "Pen" ->
-                                    Column(Modifier.width(270.dp).padding(12.dp)) {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            listOf("Fine", "Fountain", "Marker", "Highlight")
-                                                .forEachIndexed { index, label ->
-                                                    Column(
-                                                        Modifier.weight(1f)
-                                                            .clip(round)
-                                                            .background(
-                                                                if (index == art.nib) pale
-                                                                else ivory
-                                                            )
-                                                            .clickable {
-                                                                session.update(
-                                                                    art = art.copy(nib = index),
-                                                                    record = false,
-                                                                )
-                                                            }
-                                                            .padding(3.dp),
-                                                        horizontalAlignment =
-                                                            Alignment.CenterHorizontally,
-                                                    ) {
-                                                        PenTip(index)
-                                                        Text(
-                                                            wording(
-                                                                label,
-                                                                listOf("가는 펜", "만년필", "마커", "형광펜")[
-                                                                    index],
-                                                            ),
-                                                            Modifier.semantics {
-                                                                contentDescription = label
-                                                            },
-                                                            fontSize = uiSp(12),
-                                                        )
-                                                    }
+                                "Pen" -> PenPanel(session)
+                                "Eraser" ->
+                                    Column(Modifier.width(245.dp).padding(10.dp)) {
+                                        listOf(false, true).forEach { area ->
+                                            val label =
+                                                if (area) wording("Area eraser", "영역 지우개")
+                                                else wording("Stroke eraser", "획 지우개")
+                                            TextButton(
+                                                onClick = {
+                                                    session.update(
+                                                        art =
+                                                            session.layout.copy(areaEraser = area),
+                                                        record = false,
+                                                    )
                                                 }
-                                        }
-                                        Slider(
-                                            art.thickness,
-                                            {
-                                                session.update(
-                                                    art = session.layout.copy(thickness = it),
-                                                    record = false,
-                                                )
-                                            },
-                                            valueRange = 1f..12f,
-                                        )
-                                        Row(
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            modifier = Modifier.fillMaxWidth(),
-                                        ) {
-                                            inkColors.forEachIndexed { i, c ->
-                                                Box(
-                                                    Modifier.size(29.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(c))
-                                                        .border(
-                                                            if (c == art.color) 2.dp else .5.dp,
-                                                            if (c == art.color) ink else edge,
-                                                            CircleShape,
-                                                        )
-                                                        .clickable {
-                                                            session.update(
-                                                                art =
-                                                                    session.layout.copy(color = c),
-                                                                record = false,
-                                                            )
-                                                        }
-                                                        .semantics {
-                                                            contentDescription = "Ink color ${i+1}"
-                                                        }
+                                            ) {
+                                                Text(
+                                                    (if (area == art.areaEraser) "✓ " else "") +
+                                                        label
                                                 )
                                             }
+                                        }
+                                        var diameter by remember {
+                                            mutableFloatStateOf(art.eraserSize)
+                                        }
+                                        PenSlider(
+                                            wording("Diameter", "지름"),
+                                            diameter,
+                                            4f..72f,
+                                            { diameter = it },
+                                        ) {
+                                            session.update(
+                                                art = session.layout.copy(eraserSize = diameter),
+                                                record = false,
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = {
+                                                panel = ""
+                                                dialog = "Clear ink"
+                                            }
+                                        ) {
+                                            Text(wording("Clear page handwriting", "필기 전체 지우기"))
                                         }
                                     }
                                 "Mood",
                                 "Weather" -> {
                                     val mood = name == "Mood"
-                                    val values = if (mood) moods else diaryWeather
-                                    val symbols =
-                                        if (mood) listOf("😊", "🙂", "😕", "😔", "😢")
-                                        else
-                                            listOf(
-                                                "☀️",
-                                                "🌤️",
-                                                "☁️",
-                                                "🌧️",
-                                                "⛈️",
-                                                "❄️",
-                                                "🌫️",
-                                                "🍃",
-                                            )
+                                    val values =
+                                        if (mood) moods else weatherIllustrations.map { it.code }
+                                    val symbols = listOf("😊", "🙂", "😕", "😔", "😢")
                                     Column(Modifier.width(236.dp).padding(8.dp)) {
                                         Text(wording(name, koreanTools[i]), fontSize = uiSp(17))
                                         FlowRow(
@@ -499,7 +597,15 @@ internal fun DiaryEditor(
                                                     horizontalAlignment =
                                                         Alignment.CenterHorizontally,
                                                 ) {
-                                                    Text(symbols[n], fontSize = 21.sp)
+                                                    if (mood) Text(symbols[n], fontSize = 21.sp)
+                                                    else
+                                                        Image(
+                                                            androidx.compose.ui.res.painterResource(
+                                                                weatherFor(v).icon
+                                                            ),
+                                                            null,
+                                                            Modifier.size(28.dp),
+                                                        )
                                                     Text(
                                                         wording(
                                                             v,
@@ -511,17 +617,7 @@ internal fun DiaryEditor(
                                                                     "울적",
                                                                     "슬픔",
                                                                 )[n]
-                                                            else
-                                                                listOf(
-                                                                    "맑음",
-                                                                    "구름 조금",
-                                                                    "흐림",
-                                                                    "비",
-                                                                    "뇌우",
-                                                                    "눈",
-                                                                    "안개",
-                                                                    "바람",
-                                                                )[n],
+                                                            else weatherFor(v).korean,
                                                         ),
                                                         Modifier.semantics {
                                                             contentDescription = v
@@ -614,6 +710,33 @@ internal fun DiaryEditor(
                                         )
                                 }
                                 "More" -> {
+                                    DropdownMenuItem(
+                                        text = { Text(wording("Lasso selection", "올가미 선택")) },
+                                        onClick = {
+                                            panel = ""
+                                            mode("Lasso")
+                                        },
+                                    )
+                                    val first = art.sheet / session.span * session.span
+                                    repeat(session.span) { side ->
+                                        val index = first + side
+                                        val label =
+                                            when {
+                                                session.span == 1 ->
+                                                    wording("Delete page", "페이지 삭제")
+                                                side == 0 ->
+                                                    wording("Delete left page", "왼쪽 페이지 삭제")
+                                                else -> wording("Delete right page", "오른쪽 페이지 삭제")
+                                            }
+                                        DropdownMenuItem(
+                                            text = { Text("$label · ${index+1}") },
+                                            onClick = {
+                                                panel = ""
+                                                focus.clearFocus()
+                                                requestDeletion(index)
+                                            },
+                                        )
+                                    }
                                     listOf(
                                             "Add page",
                                             "Title",
@@ -659,8 +782,60 @@ internal fun DiaryEditor(
             textPages = written
         }
     }
-    if (dialog == "Locations")
-        LocationNotebook(page, book, locations.filter { it.pageId == page.id }) { dialog = "" }
+    val requested = deletion
+    if (requested != null) {
+        val index = requested.index
+        AlertDialog(
+            onDismissRequest = { deletion = null },
+            containerColor = ivory,
+            title = { Text(wording("Delete page ${index+1}?", "${index+1}쪽을 삭제할까요?")) },
+            text = {
+                Text(
+                    wording(
+                        "This removes this page’s text, handwriting and attachments.",
+                        "이 페이지의 글, 필기와 첨부물을 삭제합니다.",
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { deleteSheet(requested) }) { Text(wording("Delete", "삭제")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletion = null }) { Text(wording("Cancel", "취소")) }
+            },
+        )
+    } else if (dialog == "Clear ink") {
+        val index = art.sheet
+        AlertDialog(
+            onDismissRequest = { dialog = "" },
+            containerColor = ivory,
+            title = {
+                Text(wording("Clear handwriting on page ${index+1}?", "${index+1}쪽의 필기를 모두 지울까요?"))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        session.update(
+                            art = art.copy(lines = art.lines.filterNot { it.sheet == index })
+                        )
+                        dialog = ""
+                    }
+                ) {
+                    Text(wording("Clear", "지우기"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { dialog = "" }) { Text(wording("Cancel", "취소")) }
+            },
+        )
+    } else if (dialog == "Locations")
+        LocationNotebook(
+            page.copy(notebookLayout = session.persistedLayout().encode()),
+            book,
+            locations.filter { it.pageId == page.id },
+        ) {
+            dialog = ""
+        }
     else if (dialog.isNotEmpty())
         EditorDialog(dialog, session, chapters, prefs, { dialog = "" }, close)
     if (viewing.isNotEmpty())
@@ -674,42 +849,4 @@ internal fun DiaryEditor(
             text = { Text(session.error) },
             confirmButton = { TextButton(onClick = { session.error = "" }) { Text("OK") } },
         )
-}
-
-@Composable
-private fun PenTip(index: Int) {
-    Canvas(Modifier.size(27.dp)) {
-        val w = size.width
-        val h = size.height
-        val half = listOf(.12f, .18f, .15f, .22f)[index] * w
-        val body =
-            Path().apply {
-                moveTo(w * .5f - half, h)
-                lineTo(w * .5f - half, h * .60f)
-                lineTo(w * .5f - half * .58f, h * .48f)
-                lineTo(w * .49f, h * .12f)
-                lineTo(w * .5f + half * .58f, h * .48f)
-                lineTo(w * .5f + half, h * .60f)
-                lineTo(w * .5f + half, h)
-                close()
-            }
-        drawPath(
-            body,
-            listOf(Color(0xff93a177), Color(0xffa0866b), Color(0xffd6ae72), Color(0xffe8c365))[
-                index],
-        )
-        drawPath(body, ink, style = androidx.compose.ui.graphics.drawscope.Stroke(.9.dp.toPx()))
-        drawLine(
-            ink,
-            androidx.compose.ui.geometry.Offset(w * .5f - half, h * .61f),
-            androidx.compose.ui.geometry.Offset(w * .5f + half, h * .61f),
-            .8.dp.toPx(),
-        )
-        drawLine(
-            ink,
-            androidx.compose.ui.geometry.Offset(w * .49f, h * .14f),
-            androidx.compose.ui.geometry.Offset(w * .50f, h * .43f),
-            .7.dp.toPx(),
-        )
-    }
 }

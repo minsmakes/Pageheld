@@ -1,5 +1,8 @@
 package app.pageheld
 
+import android.util.Base64
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -10,7 +13,31 @@ internal data class InkLine(
     val color: Int,
     val width: Float,
     val points: List<NibPoint>,
+    val instrument: Int = -1, // Legacy polylines retain their original rendering.
 )
+
+// Three IEEE floats per sample keep the exact captured geometry without expanding
+// each coordinate into a decimal Double inside Room's single-entry record.
+private fun packPoints(points: List<NibPoint>): String {
+    val buffer = ByteBuffer.allocate(points.size * 12).order(ByteOrder.LITTLE_ENDIAN)
+    for (p in points) buffer.putFloat(p.x).putFloat(p.y).putFloat(p.pressure)
+    return Base64.encodeToString(buffer.array(), Base64.NO_WRAP)
+}
+
+private fun unpackPoints(value: Any): List<NibPoint> {
+    if (value is JSONArray)
+        return List(value.length() / 3) { i ->
+            NibPoint(
+                value.getDouble(3 * i).toFloat(),
+                value.getDouble(3 * i + 1).toFloat(),
+                value.getDouble(3 * i + 2).toFloat(),
+            )
+        }
+    val bytes = Base64.decode(value as String, Base64.DEFAULT)
+    require(bytes.size % 12 == 0) { "Incomplete ink sample" }
+    val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+    return List(bytes.size / 12) { NibPoint(buffer.float, buffer.float, buffer.float) }
+}
 
 internal data class PrintPosition(
     val sheet: Int,
@@ -31,20 +58,35 @@ internal data class DiaryLayout(
     val nib: Int = 0,
     val thickness: Float = 3f,
     val color: Int = 0xff434736.toInt(),
+    val opacity: Float = 1f,
+    val sensitivity: Float = .8f,
+    val areaEraser: Boolean = false,
+    val eraserSize: Float = 24f,
+    val sheetIds: List<String> = emptyList(),
 ) {
     fun encode(): String {
         val ink = JSONArray()
         for (line in lines) {
-            val points = JSONArray()
-            for (p in line.points) points.put(p.x).put(p.y).put(p.pressure)
-            ink.put(JSONArray().put(line.sheet).put(line.color).put(line.width).put(points))
+            ink.put(
+                JSONArray()
+                    .put(line.sheet)
+                    .put(line.color)
+                    .put(line.width)
+                    .put(packPoints(line.points))
+                    .put(line.instrument)
+            )
         }
         val photos = JSONObject()
         prints.forEach { (name, p) ->
             photos.put(name, JSONArray().put(p.sheet).put(p.x).put(p.y).put(p.width))
         }
         return JSONObject()
-            .put("version", 1)
+            .put("version", 2)
+            .put("sheets", JSONArray(sheetIds))
+            .put("opacity", opacity)
+            .put("sensitivity", sensitivity)
+            .put("areaEraser", areaEraser)
+            .put("eraserSize", eraserSize)
             .put("sheet", sheet)
             .put("cursor", cursor)
             .put("mode", mode)
@@ -77,23 +119,17 @@ internal data class DiaryLayout(
                 )
             }
             val json = JSONObject(page.notebookLayout)
-            require(json.getInt("version") == 1) { "Unsupported diary layout" }
+            require(json.getInt("version") in 1..2) { "Unsupported diary layout" }
             val ink = json.getJSONArray("ink")
             val lines =
                 List(ink.length()) { i ->
                     val a = ink.getJSONArray(i)
-                    val p = a.getJSONArray(3)
                     InkLine(
                         a.getInt(0),
                         a.getInt(1),
                         a.getDouble(2).toFloat(),
-                        List(p.length() / 3) {
-                            NibPoint(
-                                p.getDouble(it * 3).toFloat(),
-                                p.getDouble(it * 3 + 1).toFloat(),
-                                p.getDouble(it * 3 + 2).toFloat(),
-                            )
-                        },
+                        unpackPoints(a.get(3)),
+                        a.optInt(4, -1),
                     )
                 }
             val photos = json.getJSONObject("prints")
@@ -102,18 +138,36 @@ internal data class DiaryLayout(
                 json.optInt("cursor"),
                 json.optString("mode", "Type"),
                 lines,
-                photos.keys().asSequence().associateWith {
-                    val p = photos.getJSONArray(it)
-                    PrintPosition(
-                        p.getInt(0),
-                        p.getDouble(1).toFloat(),
-                        p.getDouble(2).toFloat(),
-                        p.getDouble(3).toFloat(),
-                    )
-                },
+                photos
+                    .keys()
+                    .asSequence()
+                    .associateWith {
+                        val p = photos.getJSONArray(it)
+                        PrintPosition(
+                            p.getInt(0),
+                            p.getDouble(1).toFloat(),
+                            p.getDouble(2).toFloat(),
+                            p.getDouble(3).toFloat(),
+                        )
+                    }
+                    .toMutableMap()
+                    .apply {
+                        if (json.getInt("version") == 1)
+                            page.files().forEachIndexed { i, name ->
+                                putIfAbsent(name, PrintPosition(i + 1))
+                            }
+                    },
                 json.optInt("nib"),
                 json.optDouble("width", 3.0).toFloat(),
                 json.optInt("color", 0xff434736.toInt()),
+                json.optDouble("opacity", 1.0).toFloat(),
+                json.optDouble("sensitivity", .8).toFloat(),
+                json.optBoolean("areaEraser"),
+                json.optDouble("eraserSize", 24.0).toFloat(),
+                json
+                    .optJSONArray("sheets")
+                    ?.let { ids -> List(ids.length()) { ids.getString(it) } }
+                    .orEmpty(),
             )
         }
     }
@@ -128,6 +182,24 @@ internal fun remapLayout(raw: String, files: Map<String, String>): String {
 }
 
 internal data class TextSlice(val start: Int, val end: Int)
+
+// Preserve the active IME buffer and shift the subsequent slices by the document edit.
+internal fun pinTextSlices(
+    slices: List<TextSlice>,
+    index: Int,
+    active: TextSlice,
+    prefix: Int,
+    delta: Int,
+): List<TextSlice> =
+    List(maxOf(slices.size, index + 1)) { i ->
+        when {
+            i == index -> TextSlice(active.start + prefix, active.end + delta)
+            i >= slices.size ->
+                TextSlice(active.start + i - slices.size + 1, active.start + i - slices.size + 1)
+            i > index -> TextSlice(slices[i].start + delta, slices[i].end + delta)
+            else -> slices[i]
+        }
+    }
 
 // The measuring callback returns the number of UTF-16 units fitting on one physical sheet.
 internal fun paginate(body: String, fits: (String, Int, Int) -> Int): List<TextSlice> = buildList {

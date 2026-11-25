@@ -26,43 +26,58 @@ import kotlinx.coroutines.*
 
 fun mediaDir(book: Notebook) = File(book.context.filesDir, "attachments").apply { mkdirs() }
 
+private val photoCache =
+    object : android.util.LruCache<String, android.graphics.Bitmap>(24 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.allocationByteCount
+    }
+
+private fun photoKey(file: File, target: Int) = "${file.absolutePath}:$target"
+
+internal fun cachedPrint(file: File) = photoCache.get(photoKey(file, 1600))
+
+internal suspend fun loadPrint(file: File, target: Int = 1600): android.graphics.Bitmap? {
+    val key = photoKey(file, target)
+    photoCache.get(key)?.let {
+        return it
+    }
+    return withContext(Dispatchers.IO) {
+        photoCache.get(key)
+            ?: (runCatching {
+                        if (file.extension == "video")
+                            MediaMetadataRetriever().let { retriever ->
+                                try {
+                                    retriever.setDataSource(file.path)
+                                    retriever.getScaledFrameAtTime(
+                                        -1,
+                                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                                        320,
+                                        240,
+                                    )
+                                } finally {
+                                    retriever.release()
+                                }
+                            }
+                        else
+                            ImageDecoder.decodeBitmap(ImageDecoder.createSource(file)) {
+                                decoder,
+                                info,
+                                _ ->
+                                decoder.setTargetSampleSize(
+                                    max(1, max(info.size.width, info.size.height) / target)
+                                )
+                            }
+                    }
+                    .getOrNull())
+                ?.also { photoCache.put(key, it) }
+    }
+}
+
 @Composable
 fun Thumbnail(file: File, modifier: Modifier, large: Boolean = false, print: Boolean = false) {
+    val target = if (large) 1600 else if (print) 960 else 320
     val bitmap by
-        produceState<android.graphics.Bitmap?>(null, file, large, print) {
-            value =
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                            if (file.extension == "video")
-                                MediaMetadataRetriever().let { retriever ->
-                                    try {
-                                        retriever.setDataSource(file.path)
-                                        retriever.getScaledFrameAtTime(
-                                            -1,
-                                            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                                            320,
-                                            240,
-                                        )
-                                    } finally {
-                                        retriever.release()
-                                    }
-                                }
-                            else
-                                ImageDecoder.decodeBitmap(ImageDecoder.createSource(file)) {
-                                    decoder,
-                                    info,
-                                    _ ->
-                                    decoder.setTargetSampleSize(
-                                        max(
-                                            1,
-                                            max(info.size.width, info.size.height) /
-                                                (if (large) 1600 else if (print) 960 else 320),
-                                        )
-                                    )
-                                }
-                        }
-                        .getOrNull()
-                }
+        produceState(photoCache.get(photoKey(file, target)), file, target) {
+            value = loadPrint(file, target)
         }
     Box(
         modifier
