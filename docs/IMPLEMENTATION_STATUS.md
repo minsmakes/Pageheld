@@ -1,6 +1,6 @@
 # Pageheld implementation status
 
-The current checkout implements [Quiet Hardcover](QUIET_HARDCOVER.md). Its report covers the new navigation, rendering, verification, and device limits. The release notes below describe earlier builds.
+The current release is [Pageheld 1.7 Digital Diary](DIGITAL_DIARY_1_7.md). [Quiet Hardcover](QUIET_HARDCOVER.md) documents v1.6. The notes below describe earlier builds.
 
 
 ## Delivered

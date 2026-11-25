@@ -135,13 +135,14 @@ internal fun Modifier.turnEdges(turn: BookTurn, wide: Boolean, adjacent: (Int) -
             if (down.type != PointerType.Touch || down.isConsumed || turn.target != null)
                 return@awaitEachGesture
             val edge = 22.dp.toPx()
-            val sign =
+            var sign =
                 when {
                     down.position.x <= edge -> -1
                     down.position.x >= size.width - edge -> 1
+                    down.position.y <= edge || down.position.y >= size.height - edge -> 0
                     else -> return@awaitEachGesture
                 }
-            val next = adjacent(sign) ?: return@awaitEachGesture
+            if (sign != 0 && adjacent(sign) == null) return@awaitEachGesture
             val travel = size.width * if (wide) .50f else .86f
             val velocity = VelocityTracker()
             velocity.addPosition(down.uptimeMillis, down.position)
@@ -167,7 +168,10 @@ internal fun Modifier.turnEdges(turn: BookTurn, wide: Boolean, adjacent: (Int) -
                                 abs(total.y) >= abs(total.x)
                         )
                             break
+                        if (sign == 0 && abs(total.x) >= viewConfiguration.touchSlop)
+                            sign = if (total.x < 0f) 1 else -1
                         if (-sign * total.x < viewConfiguration.touchSlop) continue
+                        val next = adjacent(sign) ?: break
                         if (!turn.begin(next, sign, down.position.y / size.height)) break
                         started = true
                         turn.drag(-sign * total.x / travel)
@@ -187,6 +191,7 @@ internal fun TurningLeaves(
     wide: Boolean,
     gestures: Boolean,
     adjacent: (Int) -> Leaf?,
+    inset: Dp = Binding.grip,
     content: @Composable (Leaf, Boolean) -> Unit,
 ) {
     val front = rememberGraphicsLayer()
@@ -217,7 +222,7 @@ internal fun TurningLeaves(
             }
     ) {
         val next = turn.target
-        for (leaf in listOfNotNull(current, next).distinct()) key(leaf) {
+        for (leaf in listOfNotNull(current, next).distinct()) key(leaf, leaf == current) {
             val active = leaf == current
             val layer = if (active) front else back
             Box(
@@ -234,7 +239,7 @@ internal fun TurningLeaves(
                         }
                     }
                     .paper("Blank")
-                    .padding(horizontal = Binding.grip)
+                    .padding(horizontal = inset)
             ) {
                 content(leaf, active)
             }

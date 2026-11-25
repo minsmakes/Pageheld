@@ -17,9 +17,9 @@ import kotlin.math.*
 
 val ink = Color(0xff343a31)
 val muted = Color(0xff63695e)
-val sage = Color(0xff59664e)
+val sage = Color(0xff627547)
 val pale = Color(0xffeceddf)
-val ivory = Color(0xfffaf6eb)
+val ivory = Color(0xfffbf4e9)
 val edge = Color(0xffddd4c1)
 val swatches =
     listOf(ivory, Color(0xfff5e9d6), Color(0xfff4e3de), Color(0xffe4ebef), Color(0xffe5eadc))
@@ -36,6 +36,7 @@ val icons =
         "menu" to R.drawable.i_menu,
         "bookmark" to R.drawable.i_bookmark,
         "bell" to R.drawable.i_bell,
+        "eraser" to R.drawable.i_eraser,
         "pencil" to R.drawable.i_pencil,
         "chevron-right" to R.drawable.i_chevron_right,
         "plus" to R.drawable.i_plus,
@@ -103,7 +104,7 @@ fun Title(text: String, size: Int = 20, italic: Boolean = false) {
         text,
         modifier = if(size>=22) Modifier.semantics { heading() } else Modifier,
         color = ink,
-        fontFamily = serif,
+        fontFamily = LocalDisplayFont.current,
         fontSize = uiSp(size),
         lineHeight = uiSp(size + 8),
         letterSpacing = 0.sp,
@@ -168,7 +169,7 @@ fun Header(
 // A tiny repeating grain is shared by all paper surfaces and stays fixed as the page scrolls.
 internal val paperGrain by lazy {
     val random = java.util.Random(412)
-    val pixels = IntArray(64 * 64) { android.graphics.Color.argb(random.nextInt(9), 126, 113, 86) }
+    val pixels = IntArray(64 * 64) { android.graphics.Color.argb(random.nextInt(15), 138, 110, 75) }
     val tile =
         android.graphics.Bitmap.createBitmap(
             pixels,

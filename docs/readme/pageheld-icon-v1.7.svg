@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 18 68 68" role="img" aria-label="Pageheld clover">
+  <defs>
+    <clipPath id="launcher-mask"><rect x="20" y="18" width="68" height="68" rx="15"/></clipPath>
+  </defs>
+  <g clip-path="url(#launcher-mask)">
+    <rect x="20" y="18" width="68" height="68" fill="#A8B38C"/>
+    <path fill="#596C42" d="M51,51Q53,62 44,77Q45,80 48,77Q57,63 55,51Z"/>
+    <g stroke="#526C3D" stroke-width=".6">
+      <path fill="#647C46" transform="rotate(23 54 52)" d="M54,52C47,50 38,40 43,33C46,28 51,29 54,33C57,28 63,29 66,33C70,41 60,51 54,52Z"/>
+      <path fill="#708B50" transform="rotate(113 54 52)" d="M54,52C47,50 38,40 43,33C46,28 51,29 54,33C57,28 63,29 66,33C70,41 60,51 54,52Z"/>
+      <path fill="#60793F" transform="rotate(203 54 52)" d="M54,52C47,50 38,40 43,33C46,28 51,29 54,33C57,28 63,29 66,33C70,41 60,51 54,52Z"/>
+      <path fill="#789153" transform="rotate(293 54 52)" d="M54,52C47,50 38,40 43,33C46,28 51,29 54,33C57,28 63,29 66,33C70,41 60,51 54,52Z"/>
+    </g>
+  </g>
+</svg>

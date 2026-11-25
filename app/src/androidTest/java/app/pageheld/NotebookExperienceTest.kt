@@ -57,6 +57,8 @@ class NotebookExperienceTest {
                 title = "산책 · A quiet walk",
                 body = "바람이 부는 오후, 천천히 걸었다.\n\nA little time to write and remember.",
                 media = photo.name,
+                notebookLayout =
+                    DiaryLayout(prints = mapOf(photo.name to PrintPosition(0))).encode(),
             )
         try {
             runBlocking {
@@ -70,14 +72,15 @@ class NotebookExperienceTest {
                     host.setContent {
                         MaterialTheme {
                             Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-                                Editor(
+                                DiaryEditor(
                                     page,
                                     book,
                                     emptyList(),
-                                    emptyMap(),
                                     emptyList(),
-                                    null,
-                                    null,
+                                    emptyMap(),
+                                    false,
+                                    "",
+                                    {},
                                 ) {}
                             }
                         }
@@ -101,7 +104,7 @@ class NotebookExperienceTest {
                 assertTrue("Bilingual title is visible", page.title in visible)
                 assertTrue("Bilingual body is visible", page.body in visible)
                 val hint = "Hold and drag a photo or video to place it on the page."
-                assertTrue(hint in visible)
+                assertTrue("Done" in visible)
                 if (InstrumentationRegistry.getArguments().getString("capture") == "true") {
                     val screenshot = requireNotNull(automation.takeScreenshot())
                     File(context.cacheDir, "bilingual-review.png").outputStream().use {
@@ -119,20 +122,31 @@ class NotebookExperienceTest {
                 }
                 val imageDeadline = SystemClock.elapsedRealtime() + 8000
                 var imageBounds = photoBounds(automation.rootInActiveWindow)
-                while ((imageBounds == null || imageBounds.isEmpty) && SystemClock.elapsedRealtime() < imageDeadline) {
+                while (
+                    (imageBounds == null || imageBounds.isEmpty) &&
+                        SystemClock.elapsedRealtime() < imageDeadline
+                ) {
                     SystemClock.sleep(100)
                     imageBounds = photoBounds(automation.rootInActiveWindow)
                 }
-                val bounds = requireNotNull(imageBounds) { "Attachment preview did not finish decoding" }
+                val bounds =
+                    requireNotNull(imageBounds) { "Attachment preview did not finish decoding" }
                 val start = SystemClock.uptimeMillis()
                 fun touch(action: Int, step: Int) {
-                    val event = MotionEvent.obtain(
-                        start, SystemClock.uptimeMillis(), action,
-                        bounds.exactCenterX() + step * maxOf(bounds.width() / 7f,
-                            context.resources.displayMetrics.widthPixels * .035f),
-                        bounds.exactCenterY() - step * bounds.height() / 9f,
-                        0,
-                    )
+                    val event =
+                        MotionEvent.obtain(
+                            start,
+                            SystemClock.uptimeMillis(),
+                            action,
+                            bounds.exactCenterX() +
+                                step *
+                                    maxOf(
+                                        bounds.width() / 30f,
+                                        context.resources.displayMetrics.widthPixels * .009f,
+                                    ),
+                            bounds.exactCenterY() - step * bounds.height() / 9f,
+                            0,
+                        )
                     event.source = InputDevice.SOURCE_TOUCHSCREEN
                     try {
                         assertTrue(automation.injectInputEvent(event, true))
@@ -141,7 +155,9 @@ class NotebookExperienceTest {
                     }
                 }
                 touch(MotionEvent.ACTION_DOWN, 0)
-                SystemClock.sleep(android.view.ViewConfiguration.getLongPressTimeout().toLong()+300)
+                SystemClock.sleep(
+                    android.view.ViewConfiguration.getLongPressTimeout().toLong() + 300
+                )
                 for (step in 1..5) {
                     touch(MotionEvent.ACTION_MOVE, step)
                     SystemClock.sleep(30)
@@ -149,26 +165,124 @@ class NotebookExperienceTest {
                 touch(MotionEvent.ACTION_UP, 5)
                 val saved = runBlocking {
                     withTimeoutOrNull(5_000) {
-                        book.dao.pages().first { it.any { page -> page.mediaPositions.isNotBlank() } }
-                            .single().mediaPositionsByFile().getValue(photo.name)
+                        book.dao
+                            .pages()
+                            .first {
+                                it.any { page ->
+                                    DiaryLayout.read(page).prints[photo.name]?.x != .15f
+                                }
+                            }
+                            .single()
+                            .let { DiaryLayout.read(it).prints.getValue(photo.name) }
                     }
                 }
                 assertNotNull("Photo drag did not persist at $bounds", saved)
-                assertTrue(saved!!.across > .08f)
+                assertTrue(saved!!.x > .15f)
                 automation.waitForIdle(250, 5000)
                 assertFalse(hint in texts(automation.rootInActiveWindow))
 
+                fun pinch(expand: Boolean) {
+                    val r = requireNotNull(photoBounds(automation.rootInActiveWindow))
+                    val cx = r.exactCenterX()
+                    val cy = r.exactCenterY()
+                    val t = SystemClock.uptimeMillis()
+                    fun event(action: Int, n: Int, radius: Float) {
+                        val pointers =
+                            Array(n) { i ->
+                                MotionEvent.PointerProperties().apply {
+                                    id = i
+                                    toolType = MotionEvent.TOOL_TYPE_FINGER
+                                }
+                            }
+                        val positions =
+                            Array(n) { i ->
+                                MotionEvent.PointerCoords().apply {
+                                    x = cx + (if (i == 0) -radius else radius)
+                                    y = cy
+                                    pressure = 1f
+                                    size = .1f
+                                }
+                            }
+                        val e =
+                            MotionEvent.obtain(
+                                t,
+                                SystemClock.uptimeMillis(),
+                                action,
+                                n,
+                                pointers,
+                                positions,
+                                0,
+                                0,
+                                1f,
+                                1f,
+                                0,
+                                0,
+                                InputDevice.SOURCE_TOUCHSCREEN,
+                                0,
+                            )
+                        try {
+                            assertTrue(automation.injectInputEvent(e, true))
+                        } finally {
+                            e.recycle()
+                        }
+                        SystemClock.sleep(35)
+                    }
+                    val start = r.width() * (if (expand) .14f else .22f)
+                    val end = r.width() * (if (expand) .22f else .14f)
+                    event(MotionEvent.ACTION_DOWN, 1, start)
+                    event(
+                        MotionEvent.ACTION_POINTER_DOWN or
+                            (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+                        2,
+                        start,
+                    )
+                    for (i in 1..5) event(MotionEvent.ACTION_MOVE, 2, start + (end - start) * i / 5)
+                    event(
+                        MotionEvent.ACTION_POINTER_UP or
+                            (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+                        2,
+                        end,
+                    )
+                    event(MotionEvent.ACTION_UP, 1, end)
+                }
+                pinch(true)
+                val enlarged = runBlocking {
+                    withTimeoutOrNull(5000) {
+                        book.dao.pages().first {
+                            DiaryLayout.read(it.single()).prints.getValue(photo.name).width >
+                                saved.width + .02f
+                        }
+                    }
+                }
+                assertNotNull("Outward pinch enlarges the photograph", enlarged)
+                val big = DiaryLayout.read(enlarged!!.single()).prints.getValue(photo.name).width
+                pinch(false)
+                assertNotNull(
+                    runBlocking {
+                        withTimeoutOrNull(5000) {
+                            book.dao.pages().first {
+                                DiaryLayout.read(it.single()).prints.getValue(photo.name).width <
+                                    big - .02f
+                            }
+                        }
+                    }
+                )
+
                 fun tap(bounds: Rect) {
-                    automation.executeShellCommand("input tap ${bounds.centerX()} ${bounds.centerY()}")
+                    automation
+                        .executeShellCommand("input tap ${bounds.centerX()} ${bounds.centerY()}")
                         .use { descriptor ->
-                            android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).readBytes()
+                            android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor)
+                                .readBytes()
                         }
                     automation.waitForIdle(250, 5000)
                 }
                 fun tapLabel(label: String) {
                     fun find(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
                         if (node == null || node.text?.toString() == label) return node
-                        return (0 until node.childCount).firstNotNullOfOrNull { find(node.getChild(it)) }
+                        return (0 until node.childCount).firstNotNullOfOrNull {
+                            find(node.getChild(it))
+                        }
                     }
                     val timeout = SystemClock.elapsedRealtime() + 5000
                     while (SystemClock.elapsedRealtime() < timeout) {
@@ -186,9 +300,12 @@ class NotebookExperienceTest {
                         }
                         SystemClock.sleep(100)
                     }
-                    fail("Missing button $label. Visible text: ${texts(automation.rootInActiveWindow)}")
+                    fail(
+                        "Missing button $label. Visible text: ${texts(automation.rootInActiveWindow)}"
+                    )
                 }
-                tap(requireNotNull(photoBounds(automation.rootInActiveWindow)))
+                tapLabel("Photo")
+                tapLabel("View attachment")
                 tapLabel("Remove attachment")
                 tapLabel("Remove")
                 val updated = runBlocking {
@@ -196,7 +313,7 @@ class NotebookExperienceTest {
                         book.dao.pages().first { it.single().files().isEmpty() }.single()
                     }
                 }
-                assertNotNull("Confirmed removal did not persist",updated)
+                assertNotNull("Confirmed removal did not persist", updated)
                 assertEquals(page.body, updated!!.body)
                 assertTrue(updated.mediaPositionsByFile().isEmpty())
                 assertEquals("", runBlocking { book.dao.locationsFor(page.id).single().media })
@@ -208,12 +325,22 @@ class NotebookExperienceTest {
                 tapLabel("Weather")
                 tapLabel("Rainy")
                 runBlocking {
-                    assertNotNull("Rainy weather did not persist",withTimeoutOrNull(5_000) { book.dao.pages().first { it.single().weather == "Rainy" } })
+                    assertNotNull(
+                        "Rainy weather did not persist",
+                        withTimeoutOrNull(5_000) {
+                            book.dao.pages().first { it.single().weather == "Rainy" }
+                        },
+                    )
                 }
-                tapLabel("Rainy")
-                tapLabel("Clear weather")
+                tapLabel("Weather")
+                tapLabel("Clear")
                 runBlocking {
-                    assertNotNull("Cleared weather did not persist",withTimeoutOrNull(5_000) { book.dao.pages().first { it.single().weather.isEmpty() } })
+                    assertNotNull(
+                        "Cleared weather did not persist",
+                        withTimeoutOrNull(5_000) {
+                            book.dao.pages().first { it.single().weather.isEmpty() }
+                        },
+                    )
                 }
             }
         } finally {

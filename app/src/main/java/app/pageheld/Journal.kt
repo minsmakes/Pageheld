@@ -36,7 +36,7 @@ fun EntryRow(p: Page, book: Notebook, open: (Page) -> Unit, menu: Boolean = fals
         Column(Modifier.weight(1f)) {
             Text(
                 p.heading(),
-                fontFamily = serif,
+                fontFamily = LocalDisplayFont.current,
                 color = ink,
                 fontSize = uiSp(17),
                 maxLines = 2,
@@ -91,7 +91,7 @@ fun Journal(
             search.entries(pages, locations, bookmarks)
         }
     Column {
-        Header("Journal") {
+        Header(wording("All writings","전체 기록")) {
             Action("plus", "New page", click = newPage)
             Action("search", "Search journal") {
                 searching = !searching
@@ -122,7 +122,7 @@ fun Journal(
                 .padding(horizontal = 15.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            listOf("All", "Diary", "Memory", "Gratitude").forEach {
+            listOf("All", "Diary", "Note", "Memory", "Gratitude").forEach {
                 Tag(it, it == search.filter) { search.filter = it }
             }
         }

@@ -3,16 +3,11 @@ package app.pageheld
 import android.graphics.ImageDecoder
 import android.media.MediaMetadataRetriever
 import android.widget.VideoView
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.*
@@ -186,558 +181,204 @@ fun Appearance(
         }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Editor(
-    initial: Page,
-    book: Notebook,
+internal fun EditorDialog(
+    name: String,
+    session: WritingSession,
     chapters: List<Chapter>,
     settings: Map<String, String>,
-    locations: List<DiaryLocation>,
-    previous: (() -> Unit)?,
-    next: (() -> Unit)?,
-    daily: Boolean = false,
-    active: Boolean = true,
-    initialAttachment: String = "",
-    onImporting: (Boolean) -> Unit = {},
-    onDeleted: (() -> Unit)? = null,
-    back: () -> Unit,
+    dismiss: () -> Unit,
+    close: (Page) -> Unit,
 ) {
-    var page by remember(initial.id) { mutableStateOf(initial) }
-    LaunchedEffect(initial.mood) {
-        if (daily && page.title.isEmpty() && page.body.isEmpty() && page.files().isEmpty())
-            page = page.copy(mood = initial.mood)
-    }
-    var dragHintDismissed by rememberSaveable { mutableStateOf(false) }
-    val past = remember { mutableStateListOf<Pair<String, String>>() }
-    val future = remember { mutableStateListOf<Pair<String, String>>() }
-    fun dismissDragHint() {
-        if (dragHintDismissed || settings["attachmentDragHintSeen"] == "true") return
-        dragHintDismissed = true
-        book.setting("attachmentDragHintSeen", "true")
-    }
-    fun change(next: Page, record: Boolean = false) {
-        if (record) {
-            past.add(page.title to page.body)
-            if (past.size > 60) past.removeAt(0)
-            future.clear()
-        }
-        if (page.media.isNotBlank() && (next.title != page.title || next.body != page.body)) {
-            dismissDragHint()
-        }
-        page = next
-        book.save(next)
-    }
-    fun restoreText(
-        from: MutableList<Pair<String, String>>,
-        to: MutableList<Pair<String, String>>,
-    ) {
-        if (from.isEmpty()) return
-        to.add(page.title to page.body)
-        val (title, body) = from.removeAt(from.lastIndex)
-        change(page.copy(title = title, body = body))
-    }
-    var sheet by rememberSaveable { mutableStateOf("") }
-    var viewing by rememberSaveable { mutableStateOf(initialAttachment) }
-    var removing by rememberSaveable { mutableStateOf("") }
-    var error by remember { mutableStateOf("") }
-    var importing by remember { mutableStateOf(false) }
+    val page = session.page
+    var title by remember { mutableStateOf(page.title) }
     val scope = rememberCoroutineScope()
-    DisposableEffect(importing, active) {
-        if (active && importing) onImporting(true)
-        onDispose { if (active && importing) onImporting(false) }
-    }
-    val picker =
-        rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            if (uri != null)
-                scope.launch {
-                    importing = true
-                    try {
-                        val file =
-                            withContext(Dispatchers.IO) {
-                                val resolver = book.context.contentResolver
-                                val dest =
-                                    File(
-                                        mediaDir(book),
-                                        uid() +
-                                            if (resolver.getType(uri)?.startsWith("video/") == true)
-                                                ".video"
-                                            else ".photo",
-                                    )
-                                try {
-                                    requireNotNull(resolver.openInputStream(uri)).use { input ->
-                                        dest.outputStream().use { input.copyTo(it) }
-                                    }
-                                    dest
-                                } catch (e: Exception) {
-                                    dest.delete()
-                                    throw e
-                                }
-                            }
-                        change(page.copy(media = (page.files() + file.name).joinToString("\n")))
-                    } catch (e: Exception) {
-                        error = "Couldn’t import this attachment."
-                    } finally {
-                        importing = false
-                    }
-                }
-        }
-    val paper = page.paper.ifBlank { settings["paper"] ?: "Ruled" }
-    val color = swatches.getOrElse(settings["tone"]?.toIntOrNull() ?: 0) { ivory }
-    val bodySize = writingSize(settings)
-    val titleSize = (bodySize + 6).sp
-    val line =
-        when (settings["spacing"]) {
-            "Close" -> 27
-            "Airy" -> 38
-            else -> 32
-        }.let { (it * bodySize / 20f).sp }
-    val density = LocalDensity.current
-    var measured by remember(line, density) { mutableFloatStateOf(0f) }
-    val interval = with(density) { if (measured > 0f) measured.toDp() else line.toDp() }
-    val margin =
-        when (settings["margin"]) {
-            "Narrow" -> 16
-            "Wide" -> 40
-            else -> 25
-        }.dp
-    val font = notebookFont(book.context, settings["font"] ?: "Serif")
-    var bodyY by remember { mutableFloatStateOf(0f) }
-    var baseline by remember { mutableFloatStateOf(0f) }
-    val keyboard = LocalSoftwareKeyboardController.current
-    fun tools(name: String) {
-        keyboard?.hide()
-        sheet = name
-    }
-    androidx.activity.compose.BackHandler(enabled = active && !daily) { if (!importing) back() }
-    val compact = LocalCompactPage.current
-    val fieldTitleSize = if (daily) uiSp(if (compact) 24 else 32) else titleSize
-    Column(Modifier.fillMaxSize().background(color)) {
-        if (!daily)
-            BoxWithConstraints {
-                val shortHeader = maxWidth < 340.dp
-                Header("", { Action("arrow-left", "Close page", !importing, back) }) {
-                    if (previous != null || next != null) {
-                        Box(Modifier.graphicsLayer { scaleX = -1f }) {
-                            Action(
-                                "chevron-right",
-                                "Previous page",
-                                previous != null && !importing,
-                            ) {
-                                previous?.invoke()
-                            }
-                        }
-                        Action("chevron-right", "Next page", next != null && !importing) {
-                            next?.invoke()
-                        }
-                    }
-                    if (!shortHeader)
-                        Action("undo-2", "Undo", past.isNotEmpty()) { restoreText(past, future) }
-                    if (!shortHeader)
-                        Action("redo-2", "Redo", future.isNotEmpty()) { restoreText(future, past) }
-                    Action("ellipsis-vertical", "Page options") { tools("Page options") }
-                }
-            }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val minimum = maxHeight
-            val scroll = rememberScrollState()
+    AlertDialog(
+        onDismissRequest = dismiss,
+        containerColor = ivory,
+        title = { Title(name) },
+        text = {
             Column(
-                Modifier.verticalScroll(scroll)
-                    .fillMaxWidth()
-                    .heightIn(min = minimum)
-                    .paper(
-                        paper,
-                        color,
-                        interval,
-                        margin,
-                        bodyY + baseline + with(density) { 2.dp.toPx() },
-                        ruleFrom = bodyY,
-                    )
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                PageMediaSurface(
-                    page,
-                    book,
-                    minimum,
-                    scroll,
-                    showDragHint =
-                        !dragHintDismissed && settings["attachmentDragHintSeen"] != "true",
-                    view = { viewing = it },
-                    place = { name, position ->
-                        if (position != null) dismissDragHint()
-                        change(page.copy(mediaPositions = page.withMediaPosition(name, position)))
-                    },
-                ) {
-                    Column(Modifier.padding(start = margin + 12.dp, end = 18.dp, top = 18.dp)) {
-                        if (daily) Imprint("Daily entry")
-                        else
-                            Note(
-                                stamp(page.created, "yMMMEd") +
-                                    "  ·  " +
-                                    android.text.format.DateFormat.getTimeFormat(book.context)
-                                        .format(java.util.Date(page.created))
-                            )
-                        Spacer(Modifier.height(if (daily) 10.dp else 24.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            BasicTextField(
-                                page.title,
-                                { change(page.copy(title = it), true) },
-                                Modifier.weight(1f).semantics { contentDescription = "Page title" },
-                                textStyle =
-                                    TextStyle(
-                                        fontSynthesis = FontSynthesis.None,
-                                        fontFamily = serif,
-                                        fontSize = fieldTitleSize,
-                                        color = ink,
-                                    ),
-                                singleLine = true,
-                                cursorBrush = SolidColor(sage),
-                                decorationBox = { inner ->
-                                    Box {
-                                        if (page.title.isEmpty())
-                                            Text(
-                                                if (daily) "Today’s story" else "Untitled page",
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                overflow = TextOverflow.Ellipsis,
-                                                color = ink,
-                                                fontSize = fieldTitleSize,
-                                                fontFamily = serif,
-                                            )
-                                        inner()
-                                    }
-                                },
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            if (!compact) Glyph("sprout", tint = sage, size = 25)
-                        }
-                        if (!daily)
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                Tag(page.mood.ifBlank { "Mood" }, icon = "smile") { tools("Mood") }
-                                Tag(
-                                    page.weather.ifBlank { "Weather" },
-                                    icon = if (page.weather == "Sunny") "sun" else "cloud",
-                                ) {
-                                    tools("Weather")
-                                }
-                                Tag(
-                                    when (locations.size) {
-                                        0 -> "Places"
-                                        1 -> locations.first().label()
-                                        else -> "${locations.size} places"
-                                    },
-                                    icon = "map-pin",
-                                ) {
-                                    tools("Place")
-                                }
-                            }
-                    }
-                    Spacer(Modifier.height(18.dp))
-                    BasicTextField(
-                        page.body,
-                        { change(page.copy(body = it), true) },
-                        Modifier.fillMaxWidth()
-                            .onGloballyPositioned { bodyY = it.positionInParent().y }
-                            .padding(start = margin + 10.dp, end = 18.dp)
-                            .heightIn(min = interval * 8)
-                            .semantics { contentDescription = "Page body" },
-                        textStyle =
-                            TextStyle(
-                                fontFamily = font,
-                                fontSynthesis = FontSynthesis.None,
-                                fontSize = bodySize.sp,
-                                lineHeight = line,
-                                color = ink,
-                                lineHeightStyle =
-                                    LineHeightStyle(
-                                        LineHeightStyle.Alignment.Center,
-                                        LineHeightStyle.Trim.None,
-                                    ),
-                            ),
-                        onTextLayout = {
-                            baseline = it.getLineBaseline(0)
-                            measured =
-                                if (it.lineCount > 1) it.getLineBaseline(1) - it.getLineBaseline(0)
-                                else 0f
-                        },
-                        cursorBrush = SolidColor(sage),
-                        decorationBox = { inner ->
-                            Box {
-                                if (page.body.isEmpty())
-                                    Text(
-                                        "Begin your page…",
-                                        color = muted,
-                                        fontFamily = font,
-                                        fontSize = bodySize.sp,
-                                        lineHeight = line,
-                                    )
-                                inner()
-                            }
-                        },
-                    )
-                }
-            }
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).background(color),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            Action("type", "Paper and text") { tools("Appearance") }
-            Action("import-media", "Attach photo or video", !importing) {
-                picker.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
-                )
-            }
-            Action("notebook", "Template and chapter") { tools("Organize page") }
-            if (daily) Action("ellipsis-vertical", "Page options") { tools("Page options") }
-        }
-    }
-    if (sheet == "Place") LocationNotebook(page, book, locations) { sheet = "" }
-    else if (sheet.isNotEmpty())
-        ModalBottomSheet(
-            onDismissRequest = { sheet = "" },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = ivory,
-        ) {
-            Column(
-                Modifier.fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Title(sheet, 25)
-                when (sheet) {
+                when (name) {
+                    "Title" ->
+                        OutlinedTextField(
+                            title,
+                            { title = it },
+                            label = { Text("Entry title") },
+                            singleLine = true,
+                        )
                     "Appearance" -> {
-                        FontOptions(book, settings, includeDisplay = false)
+                        FontOptions(session.book, settings, includeDisplay = false)
                         Appearance(
                             settings,
-                            paper,
-                            { change(page.copy(paper = it)) },
-                            book::setting,
+                            page.paper.ifBlank { settings["paper"] ?: "Blank" },
+                            { session.update(page.copy(paper = it)) },
+                            session.book::setting,
                         )
                     }
-                    "Mood" ->
-                        (moods + "Clear mood").forEach {
-                            Tag(it, it == page.mood) {
-                                change(page.copy(mood = if (it == "Clear mood") "" else it))
-                                sheet = ""
-                            }
-                        }
-                    "Weather" -> {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            diaryWeather.forEach { condition ->
-                                Tag(condition, condition == page.weather) {
-                                    change(page.copy(weather = condition))
-                                    sheet = ""
-                                }
-                            }
-                        }
-                        if (page.weather.isNotEmpty()) {
-                            TextButton(
-                                onClick = {
-                                    change(page.copy(weather = ""))
-                                    sheet = ""
-                                }
-                            ) {
-                                Text("Clear weather")
-                            }
-                        }
-                    }
-                    "Organize page" -> {
-                        Title("Entry template", 19)
-                        Row(
-                            Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            templates.entries.forEachIndexed { index, (name, prompt) ->
-                                Column(
-                                    Modifier.width(88.dp)
-                                        .heightIn(min = 104.dp)
-                                        .clip(round)
-                                        .background(if (page.template == name) pale else ivory)
-                                        .border(
-                                            1.dp,
-                                            if (page.template == name) sage else edge,
-                                            round,
+                    "Template & chapter" -> {
+                        Title("Entry template")
+                        FlowRow {
+                            templates.forEach { (name, prompt) ->
+                                Tag(name, name == page.template) {
+                                    session.update(
+                                        page.copy(
+                                            template = name,
+                                            body =
+                                                if (
+                                                    page.body.isBlank() ||
+                                                        page.body == templates[page.template]
+                                                )
+                                                    prompt
+                                                else page.body,
                                         )
-                                        .clickable {
-                                            change(
-                                                page.copy(
-                                                    template = name,
-                                                    body =
-                                                        if (
-                                                            page.body.isBlank() ||
-                                                                page.body ==
-                                                                    templates[page.template]
-                                                        )
-                                                            prompt
-                                                        else page.body,
-                                                ),
-                                                true,
-                                            )
-                                        }
-                                        .padding(8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                ) {
-                                    Glyph(
-                                        listOf(
-                                            "pencil",
-                                            "calendar-days",
-                                            "image",
-                                            "heart",
-                                            "mail",
-                                            "leaf",
-                                            "dumbbell",
-                                        )[index],
-                                        tint = sage,
-                                    )
-                                    Spacer(Modifier.height(10.dp))
-                                    Text(
-                                        name,
-                                        fontFamily = LocalDisplayFont.current,
-                                        textAlign = TextAlign.Center,
-                                        lineHeight = uiSp(18),
                                     )
                                 }
                             }
                         }
-                        Title("Chapter", 19)
-                        Tag("Unfiled", page.chapter == null) { change(page.copy(chapter = null)) }
-                        chapters.forEach {
-                            Tag(it.name, page.chapter == it.id) {
-                                change(page.copy(chapter = it.id))
+                        Title("Chapter")
+                        Tag("Month of entry", page.chapter == null) {
+                            session.update(page.copy(chapter = null))
+                        }
+                        chapters.forEach { c ->
+                            Tag(c.name, page.chapter == c.id) {
+                                session.update(page.copy(chapter = c.id))
                             }
                         }
                     }
-                    else -> {
-                        if (daily) {
-                            listOf("Mood", "Weather", "Place").forEach { name ->
-                                Tag(name) { tools(name) }
-                            }
-                        }
-                        Row {
-                            Action("undo-2", "Undo", past.isNotEmpty()) {
-                                restoreText(past, future)
-                            }
-                            Action("redo-2", "Redo", future.isNotEmpty()) {
-                                restoreText(future, past)
-                            }
-                        }
-                        Tag(if (page.starred) "Remove bookmark" else "Bookmark page") {
-                            change(page.copy(starred = !page.starred))
-                            sheet = ""
-                        }
-                        Tag("Delete page") {
-                            sheet = ""
-                            error = "Delete this page?"
-                        }
-                    }
+                    "Delete entry" ->
+                        Text("Delete this entry and its notebook copies of attachments?")
                 }
             }
-        }
-    if (active && viewing.isNotBlank() && viewing in page.files())
-        Dialog(onDismissRequest = { viewing = "" }) {
-            Column(Modifier.background(ivory, round).padding(12.dp)) {
-                val file = File(mediaDir(book), viewing)
-                val previewHeight =
-                    minOf(
-                        360.dp,
-                        with(LocalDensity.current) {
-                            LocalWindowInfo.current.containerSize.height.toDp() * .52f
-                        },
-                    )
-                MediaMount(Modifier.fillMaxWidth().height(previewHeight)) {
-                    if (file.extension == "video")
-                        AndroidView(
-                            factory = { ctx ->
-                                VideoView(ctx).apply {
-                                    setVideoPath(file.path)
-                                    setMediaController(
-                                        android.widget.MediaController(ctx).also {
-                                            it.setAnchorView(this)
-                                        }
-                                    )
-                                    start()
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !session.locked,
+                onClick = {
+                    when (name) {
+                        "Title" -> {
+                            session.update(page.copy(title = title))
+                            dismiss()
+                        }
+                        "Delete entry" -> {
+                            session.locked = true
+                            val result = kotlinx.coroutines.CompletableDeferred<Unit>()
+                            session.book.queue {
+                                try {
+                                    session.book.dao.removePage(page.id)
+                                    page.files().forEach {
+                                        File(mediaDir(session.book), it).delete()
+                                    }
+                                    result.complete(Unit)
+                                } catch (e: Exception) {
+                                    result.completeExceptionally(e)
                                 }
-                            },
-                            modifier = Modifier.fillMaxSize().background(Color(0xffeee8db)),
-                        )
-                    else Thumbnail(file, Modifier.fillMaxSize(), large = true)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(
-                        onClick = {
-                            removing = viewing
-                            viewing = ""
+                            }
+                            scope.launch {
+                                try {
+                                    result.await()
+                                    dismiss()
+                                    close(page)
+                                } catch (e: Exception) {
+                                    session.error = "Couldn’t delete this entry."
+                                } finally {
+                                    session.locked = false
+                                }
+                            }
                         }
-                    ) {
-                        Text("Remove attachment", color = MaterialTheme.colorScheme.error)
+                        else -> dismiss()
                     }
-                    TextButton(onClick = { viewing = "" }) { Text("Close") }
-                }
+                },
+            ) {
+                Text(if (name == "Delete entry") "Delete" else "Done")
             }
-        }
-    if (removing.isNotBlank())
-        AlertDialog(
-            onDismissRequest = { removing = "" },
-            title = { Title("Remove this attachment?") },
-            text = {
-                Text(
-                    "This removes the notebook’s copy and any links to it from places on this page."
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val filename = removing
-                        removing = ""
-                        if (filename in page.files()) {
-                            val updated =
-                                page.copy(
-                                    media =
-                                        page.files().filter { it != filename }.joinToString("\n"),
-                                    mediaPositions = page.withMediaPosition(filename, null),
+        },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Close") } },
+    )
+}
+
+@Composable
+internal fun AttachmentPreview(session: WritingSession, name: String, dismiss: () -> Unit) {
+    val file = File(mediaDir(session.book), name)
+    var removing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    Dialog(onDismissRequest = dismiss) {
+        Column(Modifier.background(ivory, round).padding(12.dp)) {
+            MediaMount(Modifier.fillMaxWidth().heightIn(max = 360.dp).fillMaxHeight(.55f)) {
+                if (file.extension == "video")
+                    AndroidView(
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                setVideoPath(file.path)
+                                setMediaController(
+                                    android.widget.MediaController(ctx).also {
+                                        it.setAnchorView(this)
+                                    }
                                 )
-                            page = updated
-                            book.queue {
-                                book.dao.saveAfterRemovingAttachment(updated, filename)
-                                File(mediaDir(book), filename).delete()
+                                start()
                             }
-                        }
-                    }
-                ) {
-                    Text("Remove", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = { TextButton(onClick = { removing = "" }) { Text("Cancel") } },
-        )
-    if (error.isNotBlank())
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                else Thumbnail(file, Modifier.fillMaxSize(), large = true)
+            }
+            Row {
+                TextButton(onClick = { removing = true }) { Text("Remove attachment") }
+                TextButton(onClick = dismiss) { Text("Close") }
+            }
+        }
+    }
+    if (removing)
         AlertDialog(
-            onDismissRequest = { error = "" },
-            title = { Title(error) },
+            onDismissRequest = { removing = false },
+            title = { Title("Remove this attachment?") },
+            text = { Text("Remove the notebook copy and its place links?") },
             confirmButton = {
                 TextButton(
+                    enabled = !session.locked,
                     onClick = {
-                        if (error == "Delete this page?") {
-                            val removed = page
-                            book.queue {
-                                book.dao.removePage(removed.id)
-                                removed.files().forEach { File(mediaDir(book), it).delete() }
+                        session.locked = true
+                        val art = session.layout.copy(prints = session.layout.prints - name)
+                        val updated =
+                            session.page.copy(
+                                media =
+                                    session.page.files().filter { it != name }.joinToString("\n"),
+                                mediaPositions = session.page.withMediaPosition(name, null),
+                                notebookLayout = art.encode(),
+                                draft = true,
+                            )
+                        val result = CompletableDeferred<Unit>()
+                        session.book.queue {
+                            try {
+                                session.book.dao.saveAfterRemovingAttachment(updated, name)
+                                file.delete()
+                                result.complete(Unit)
+                            } catch (e: Exception) {
+                                result.completeExceptionally(e)
                             }
-                            (onDeleted ?: back)()
                         }
-                        error = ""
-                    }
+                        scope.launch {
+                            try {
+                                result.await()
+                                session.locked = false
+                                session.past.clear()
+                                session.future.clear()
+                                session.update(updated, art, record = false)
+                                dismiss()
+                            } catch (e: Exception) {
+                                session.error = "Couldn’t remove the attachment."
+                            } finally {
+                                session.locked = false
+                            }
+                        }
+                    },
                 ) {
-                    Text(if (error == "Delete this page?") "Delete" else "OK")
+                    Text("Remove")
                 }
             },
-            dismissButton = { TextButton(onClick = { error = "" }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { removing = false }) { Text("Cancel") } },
         )
 }

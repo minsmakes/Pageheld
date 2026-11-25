@@ -162,7 +162,7 @@ fun Chapters(
 }
 
 @Composable
-fun You(book: Notebook, settings: Map<String, String>, showPlate: Boolean = true) {
+fun You(book: Notebook, settings: Map<String, String>, showPlate: Boolean = true, entries:List<Page> = emptyList()) {
     Column {
         Header("Personal settings")
         Column(
@@ -180,7 +180,7 @@ fun You(book: Notebook, settings: Map<String, String>, showPlate: Boolean = true
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Appearance(
                         settings,
-                        settings["paper"] ?: "Ruled",
+                        settings["paper"] ?: "Blank",
                         { book.setting("paper", it) },
                         book::setting,
                     )
@@ -209,8 +209,7 @@ fun You(book: Notebook, settings: Map<String, String>, showPlate: Boolean = true
             Panel {
                 Title("Mood journal", 20)
                 val checkIns =
-                    settings
-                        .filterKeys { it.startsWith("mood.") }
+                    (settings.filterKeys { it.startsWith("mood.") } + entries.asReversed().filter { it.mood.isNotBlank() }.associate { "mood."+date(it.created).toLocalDate() to it.mood })
                         .toSortedMap(reverseOrder())
                         .entries
                         .take(7)
@@ -233,9 +232,9 @@ fun You(book: Notebook, settings: Map<String, String>, showPlate: Boolean = true
             }
             BackupControls(book)
             Panel {
-                Title("About Pageheld", 20)
+                Title("Pageheld. v" + BuildConfig.VERSION_NAME, 20)
                 Note("A personal journal for everyday writing and memories.")
-                Note("몽글동심 handwriting © 2022 VoyagerX and Song Sumin.")
+                Note("온글잎 몽몽데이즈몽글동심체 © 2022 VoyagerX and Song Sumin.")
             }
         }
     }

@@ -33,6 +33,8 @@ class NotebookTest {
                     chapter = chapter.id,
                     media = original.name,
                     weather = "Rainy",
+                    draft = true,
+                    notebookLayout = DiaryLayout(sheet=2, lines=listOf(InkLine(2,12,.01f,listOf(NibPoint(.1f,.2f,.6f)))), prints=mapOf(original.name to PrintPosition(1,.3f,.4f,.7f))).encode(),
                     mediaPositions = mapOf(original.name to position).encodeMediaPositions(),
                 )
             book.dao.save(chapter)
@@ -54,6 +56,7 @@ class NotebookTest {
             assertEquals(
                 entry.copy(
                     media = restored.media,
+                    notebookLayout = remapLayout(entry.notebookLayout,mapOf(original.name to restored.media)),
                     mediaPositions = mapOf(restored.media to position).encodeMediaPositions(),
                     place = "Park",
                 ),

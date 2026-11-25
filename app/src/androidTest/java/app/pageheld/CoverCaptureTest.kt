@@ -5,9 +5,10 @@ import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.Window
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.*
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -24,7 +25,17 @@ class CoverCaptureTest {
         val instrument = InstrumentationRegistry.getInstrumentation()
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             lateinit var window: Window
-            scenario.onActivity { window = it.window }
+            scenario.onActivity { host ->
+                window = host.window
+                val book = Notebook.get(host)
+                host.setContent {
+                    val entries by remember { book.dao.pages() }.collectAsState(initial = null)
+                    val chapters by remember { book.dao.chapters() }.collectAsState(emptyList())
+                    PageheldTheme(book, emptyMap()) {
+                        NotebookScreens(book, entries, chapters, emptyMap())
+                    }
+                }
+            }
             instrument.uiAutomation.waitForIdle(400, 5000)
             val w = window.decorView.width
             val h = window.decorView.height
@@ -50,22 +61,43 @@ class CoverCaptureTest {
                 }
                 bitmap.recycle()
             }
-            capture("phone-notebook-cover", Rect(0, 0, w, h))
-            val down = SystemClock.uptimeMillis()
-            fun touch(action: Int, x: Float) {
-                val e = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, h * .22f, 0)
-                e.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
-                instrument.uiAutomation.injectInputEvent(e, true)
-                e.recycle()
+            fun awaitButton(label: String, click: Boolean = true) {
+                fun find(
+                    n: android.view.accessibility.AccessibilityNodeInfo?
+                ): android.view.accessibility.AccessibilityNodeInfo? {
+                    if (n == null) return null
+                    if (n.text?.toString() == label || n.contentDescription?.toString() == label)
+                        return n
+                    return (0 until n.childCount).firstNotNullOfOrNull { find(n.getChild(it)) }
+                }
+                val expires = SystemClock.uptimeMillis() + 6500
+                while (SystemClock.uptimeMillis() < expires) {
+                    var target = find(instrument.uiAutomation.rootInActiveWindow)
+                    while (target != null && !target.isClickable) target = target.parent
+                    if (
+                        target != null &&
+                            (!click ||
+                                target.performAction(
+                                    android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK
+                                ))
+                    ) {
+                        SystemClock.sleep(650)
+                        return
+                    }
+                    SystemClock.sleep(80)
+                }
+                fail("Missing $label")
             }
-            touch(MotionEvent.ACTION_DOWN, w * .85f)
-            for (i in 1..8) {
-                touch(MotionEvent.ACTION_MOVE, w * (.85f - .075f * i))
-                SystemClock.sleep(15)
-            }
-            touch(MotionEvent.ACTION_UP, w * .25f)
-            SystemClock.sleep(550)
-            capture("phone-today-header", Rect(0, 0, w, window.decorView.rootWindowInsets.systemWindowInsetTop + (56 * window.context.resources.displayMetrics.density).toInt()))
+            awaitButton("View all  ›", click = false)
+            capture("v17-phone-today", Rect(0, 0, w, h))
+            awaitButton("Diaries")
+            capture("v17-phone-cover", Rect(0, 0, w, h))
+            awaitButton("Open cover  ›")
+            capture("v17-phone-chapters", Rect(0, 0, w, h))
+            assertTrue(
+                "Compact portrait stays portrait",
+                window.decorView.height > window.decorView.width,
+            )
         }
     }
 }

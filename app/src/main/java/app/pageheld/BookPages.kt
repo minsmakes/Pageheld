@@ -336,7 +336,7 @@ internal fun Bookplate(book: Notebook, prefs: Map<String, String>) {
         ) {
             Text(
                 prefs["owner"].orEmpty().ifEmpty { "Write your name" },
-                fontFamily = Binding.hand,
+                fontFamily = LocalDisplayFont.current,
                 fontSize = uiSp(24),
                 color = sage,
             )

@@ -16,6 +16,7 @@ val papers = listOf("Ruled", "Blank", "Grid", "Dot Grid", "Letter", "Scrapbook")
 val templates =
     linkedMapOf(
         "Free Writing" to "",
+        "Note" to "",
         "Daily Diary" to "Today I…\n\nOne moment to remember…",
         "Memory" to "I want to remember…",
         "Gratitude" to "Today I’m grateful for…\n\nIt mattered because…",
@@ -30,8 +31,7 @@ fun uid() = UUID.randomUUID().toString()
 
 fun date(ms: Long) = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())
 
-fun stamp(ms: Long, skeleton: String): String {
-    val locale = java.util.Locale.getDefault()
+fun stamp(ms: Long, skeleton: String, locale: java.util.Locale = java.util.Locale.getDefault()): String {
     val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton)
     return date(ms).format(DateTimeFormatter.ofPattern(pattern, locale))
 }
@@ -56,6 +56,8 @@ data class Page(
     val starred: Boolean = false,
     @ColumnInfo(defaultValue = "''") val mediaPositions: String = "",
     @ColumnInfo(defaultValue = "''") val weather: String = "",
+    @ColumnInfo(defaultValue = "''") val notebookLayout: String = "",
+    @ColumnInfo(defaultValue = "0") val draft: Boolean = false,
 )
 
 fun Page.heading() =
@@ -208,9 +210,16 @@ internal val weatherMigration =
         }
     }
 
+internal val documentMigration = object : androidx.room.migration.Migration(4, 5) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE Page ADD COLUMN notebookLayout TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE Page ADD COLUMN draft INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [Page::class, Chapter::class, DiaryLocation::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class NotebookDb : RoomDatabase() {
@@ -224,7 +233,7 @@ internal constructor(
     val context: Context,
     val db: NotebookDb =
         Room.databaseBuilder(context, NotebookDb::class.java, "pageheld.db")
-            .addMigrations(locationMigration, mediaPlacementMigration, weatherMigration)
+            .addMigrations(locationMigration, mediaPlacementMigration, weatherMigration, documentMigration)
             .build(),
 ) {
     val dao = db.journal()
@@ -250,6 +259,20 @@ internal constructor(
     }
 
     fun save(page: Page) = queue { dao.save(page) }
+
+    fun persist(page: Page): Deferred<Unit> {
+        val result = CompletableDeferred<Unit>()
+        queue {
+            try {
+                dao.save(page)
+                result.complete(Unit)
+            } catch (e: Exception) {
+                result.completeExceptionally(e)
+                throw e
+            }
+        }
+        return result
+    }
 
     fun setting(key: String, value: String) = queue { applySettings(mapOf(key to value)) }
 

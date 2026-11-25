@@ -89,62 +89,43 @@ internal fun Imprint(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-// A pressed olive cutting, drawn as paper-size-independent fine ink contours.
 @Composable
 internal fun Botanical(modifier: Modifier, color: Color = sage) {
     Canvas(modifier) {
-        val unit = min(size.width / 154f, size.height / 118f)
+        val unit = size.minDimension / 100f
         withTransform({
-            translate((size.width - 154 * unit) / 2, (size.height - 118 * unit) / 2)
+            translate((size.width - 100f * unit) / 2, (size.height - 100f * unit) / 2)
             scale(unit, unit, Offset.Zero)
         }) {
-            val path = Path()
-            fun stem(
-                x: Float,
-                y: Float,
-                a: Float,
-                b: Float,
-                c: Float,
-                d: Float,
-                ex: Float,
-                ey: Float,
-            ) {
-                path.reset()
-                path.moveTo(x, y)
-                path.cubicTo(a, b, c, d, ex, ey)
-                drawPath(path, color, style = Stroke(.95f))
+            val stem =
+                Path().apply {
+                    moveTo(50f, 46f)
+                    quadraticTo(49f, 73f, 34f, 94f)
+                }
+            drawPath(stem, color, style = Stroke(3f, cap = StrokeCap.Round))
+            val leaf =
+                Path().apply {
+                    moveTo(50f, 48f)
+                    cubicTo(40f, 44f, 25f, 27f, 31f, 16f)
+                    cubicTo(36f, 6f, 46f, 8f, 50f, 15f)
+                    cubicTo(54f, 5f, 66f, 8f, 69f, 17f)
+                    cubicTo(74f, 30f, 59f, 44f, 50f, 48f)
+                    close()
+                }
+            repeat(4) { i ->
+                rotate(25f + i * 89f, Offset(50f, 48f)) {
+                    drawPath(
+                        leaf,
+                        Brush.linearGradient(
+                            listOf(lerp(color, Color(0xffc5d683), .55f), color),
+                            Offset(34f, 10f),
+                            Offset(56f, 48f),
+                        ),
+                    )
+                    drawPath(leaf, color, style = Stroke(1f))
+                    drawLine(color.copy(alpha = .45f), Offset(50f, 46f), Offset(50f, 18f), .65f)
+                }
             }
-            fun leaf(x: Float, y: Float, dx: Float, dy: Float, breadth: Float) {
-                val len = hypot(dx, dy)
-                val nx = -dy / len * breadth
-                val ny = dx / len * breadth
-                path.reset()
-                path.moveTo(x, y)
-                path.quadraticTo(x + dx * .46f + nx, y + dy * .46f + ny, x + dx, y + dy)
-                path.quadraticTo(x + dx * .6f - nx, y + dy * .6f - ny, x, y)
-                drawPath(path, color.copy(alpha = .09f))
-                drawPath(path, color, style = Stroke(.85f))
-                drawLine(
-                    color.copy(alpha = .64f),
-                    Offset(x, y),
-                    Offset(x + dx * .88f, y + dy * .88f),
-                    .6f,
-                )
-            }
-            stem(25f, 111f, 65f, 90f, 87f, 60f, 124f, 13f)
-            stem(59f, 86f, 58f, 66f, 63f, 47f, 67f, 30f)
-            stem(79f, 66f, 92f, 65f, 107f, 59f, 127f, 56f)
-            leaf(49f, 94f, -23f, -18f, 5f)
-            leaf(62f, 84f, 34f, -1f, 6f)
-            leaf(59f, 74f, -17f, -22f, 4.7f)
-            leaf(62f, 53f, 16f, -26f, 4.6f)
-            leaf(65f, 43f, -7f, -25f, 4f)
-            leaf(86f, 58f, -6f, -31f, 5f)
-            leaf(100f, 43f, 29f, -11f, 5f)
-            leaf(110f, 31f, 1f, -22f, 4f)
-            leaf(117f, 23f, 18f, -16f, 3.5f)
-            leaf(103f, 61f, 19f, 9f, 4f)
-            leaf(117f, 58f, 24f, -10f, 4f)
         }
     }
 }
@@ -261,19 +242,19 @@ internal fun Modifier.bindingShading(wide: Boolean) = drawWithCache {
 }
 
 @Composable
-internal fun Stack(modifier: Modifier) {
+internal fun Stack(modifier: Modifier, covered: Boolean = true) {
     Box(
         modifier
             .shadow(Binding.elevation, Binding.corner)
             .clip(Binding.corner)
-            .linen(Binding.board)
+            .linen(if (covered) Binding.board else Color(0xffc7b699))
             .padding(start = 3.dp, end = 4.dp, top = 3.dp, bottom = 4.dp)
             .background(edge, Binding.corner)
             .drawWithCache {
                 val glint = Color.White.copy(alpha = .66f)
                 onDrawBehind {
-                    for (i in 1..3) {
-                        val inset = (i * 1.4f).dp.toPx()
+                    repeat(3) { index ->
+                        val inset = ((index + 1) * 1.4f).dp.toPx()
                         drawLine(
                             glint,
                             Offset(1f, size.height - inset),
@@ -301,7 +282,7 @@ internal object FoldedTrim : Shape {
         val w = size.width
         val h = size.height
         val x = w / 2
-        val rise = with(density) { 3.dp.toPx() }
+        val rise = with(density) { 5.dp.toPx() }
         val reach = minOf(w * .12f, with(density) { 58.dp.toPx() })
         val path =
             Path().apply {

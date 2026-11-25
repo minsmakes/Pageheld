@@ -67,7 +67,10 @@ fun PlacesMap(
                     .target(LatLng(first?.lat ?: 52.514, first?.lon ?: 13.354))
                     .zoom(13.0)
                     .build()
-            m.setStyle("https://tiles.openfreemap.org/styles/liberty") {
+            m.setStyle("https://tiles.openfreemap.org/styles/liberty") { style ->
+                mapOf("park" to "#cad5ab", "landuse_residential" to "#eee8d7", "landcover_wood" to "#bbc99d", "landcover_grass" to "#d4ddbc", "water" to "#a7cbcf").forEach { (id,color) ->
+                    (style.getLayer(id) as? org.maplibre.android.style.layers.FillLayer)?.setProperties(org.maplibre.android.style.layers.PropertyFactory.fillColor(color))
+                }
                 failed = false
                 map = m
             }
@@ -135,8 +138,9 @@ fun Memories(
     pages: List<Page>,
     locations: List<DiaryLocation>,
     open: (Page) -> Unit,
+    openMedia: (Page,String) -> Unit = { page,_ -> open(page) },
 ) {
-    var list by rememberSaveable { mutableStateOf(true) }
+    var list by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var q by rememberSaveable { mutableStateOf("") }
     var scopePlace by rememberSaveable { mutableStateOf<String?>(null) }
@@ -161,8 +165,7 @@ fun Memories(
     val places = found.groupBy(::groupKey)
     val pins = places.values.mapNotNull { it.first().pin() }
     val preview = places[selected]?.firstOrNull() ?: found.firstOrNull()
-    Column {
-        Header("Places") {
+    val controls:@Composable RowScope.()->Unit = {
             Action("search", "Search memories") {
                 searching = !searching
                 if (!searching) q = ""
@@ -190,6 +193,8 @@ fun Memories(
                 }
             }
         }
+    Column {
+        if(list || searching) Header(wording("Visited places","방문한 장소"),actions=controls)
         if (searching)
             OutlinedTextField(
                 q,
@@ -230,8 +235,23 @@ fun Memories(
                                 ?.let(::groupKey)
                     },
                 )
+                if(!searching) Row(Modifier.align(Alignment.TopStart).padding(6.dp).background(ivory.copy(alpha=.95f),round),content=controls)
+                val prints = remember(pages, selected) {
+                    val linked = places[selected].orEmpty().flatMap { place ->
+                        place.media.lines().filter(String::isNotBlank).mapNotNull { file -> byId[place.pageId]?.let { it to file } }
+                    }
+                    linked.ifEmpty { pages.flatMap { page -> page.files().map { page to it } } }.distinct()
+                }
+                LazyColumn(Modifier.align(Alignment.TopEnd).width(116.dp).fillMaxHeight(.78f),
+                    contentPadding=PaddingValues(6.dp), verticalArrangement=Arrangement.spacedBy(9.dp)) {
+                    items(prints, key={it.first.id + it.second}) { (p,f) ->
+                        MediaMount(Modifier.fillMaxWidth().height(100.dp).clickable { openMedia(p,f) }, taped=true) {
+                            Thumbnail(File(mediaDir(book),f),Modifier.fillMaxSize())
+                        }
+                    }
+                }
                 Box(
-                    Modifier.align(Alignment.BottomCenter)
+                    Modifier.widthIn(max=320.dp).align(Alignment.BottomCenter)
                         .padding(start = 12.dp, end = 12.dp, bottom = 35.dp)
                 ) {
                     Panel(
@@ -266,7 +286,7 @@ fun Memories(
 
 private fun photoMarker(file: File, density: Float): android.graphics.Bitmap? =
     runCatching {
-            val diameter = (50 * density).toInt()
+            val diameter = (60 * density).toInt()
             val source =
                 android.graphics.ImageDecoder.decodeBitmap(
                     android.graphics.ImageDecoder.createSource(file)
@@ -280,13 +300,21 @@ private fun photoMarker(file: File, density: Float): android.graphics.Bitmap? =
             val bitmap =
                 android.graphics.Bitmap.createBitmap(
                     diameter,
-                    diameter + (10 * density).toInt(),
+                    diameter + (19 * density).toInt(),
                     android.graphics.Bitmap.Config.ARGB_8888,
                 )
             val canvas = android.graphics.Canvas(bitmap)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
             paint.color = android.graphics.Color.rgb(99, 115, 82)
-            canvas.drawCircle(radius, diameter + 4 * density, 4 * density, paint)
+            canvas.drawOval(radius-4*density,diameter+13*density,radius+4*density,diameter+18*density,paint)
+            paint.color = android.graphics.Color.rgb(149,164,115)
+            val tail=android.graphics.Path().apply {
+                moveTo(radius*.24f,radius*1.50f)
+                quadTo(radius*.60f,diameter+4*density,radius,diameter+12*density)
+                quadTo(radius*1.4f,diameter+4*density,radius*1.76f,radius*1.50f)
+                close()
+            }
+            canvas.drawPath(tail,paint)
             paint.color = android.graphics.Color.WHITE
             canvas.drawCircle(radius, radius, radius, paint)
             val scale = diameter.toFloat() / minOf(source.width, source.height)

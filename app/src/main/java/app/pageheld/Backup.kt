@@ -53,6 +53,8 @@ private fun Page.json(locations: List<DiaryLocation>) =
         .put("starred", starred)
         .put("mediaPositions", mediaPositions)
         .put("weather", weather)
+        .put("notebookLayout", notebookLayout)
+        .put("draft", draft)
         .put(
             "locations",
             JSONArray(
@@ -86,6 +88,8 @@ private fun JSONObject.page() =
         getBoolean("starred"),
         optString("mediaPositions"),
         optString("weather"),
+        optString("notebookLayout"),
+        optBoolean("draft"),
     )
 
 internal suspend fun backup(book: Notebook, uri: Uri, password: String) {
@@ -222,6 +226,7 @@ internal suspend fun restore(book: Notebook, uri: Uri, password: String) {
                 book.dao.save(
                     p.copy(
                         media = names.joinToString("\n"),
+                        notebookLayout = remapLayout(p.notebookLayout, remap),
                         mediaPositions = remap.mapNotNull { (old, new) ->
                             placements[old]?.let { new to it }
                         }.toMap().encodeMediaPositions(),
@@ -238,6 +243,7 @@ internal suspend fun restore(book: Notebook, uri: Uri, password: String) {
                             }
                         book.dao.writeLocation(
                             DiaryLocation(
+                                id = v.optString("id").ifBlank { uid() },
                                 pageId = p.id,
                                 position = index,
                                 name = v.getString("name"),
@@ -281,6 +287,7 @@ internal suspend fun restore(book: Notebook, uri: Uri, password: String) {
                                 "writingSize",
                                 "displaySize",
                                 "displayFont",
+                                "owner",
                             ) || Regex("mood[.][0-9]{4}-[0-9]{2}-[0-9]{2}").matches(it)
                     }
                     .associateWith { s.getString(it) }
