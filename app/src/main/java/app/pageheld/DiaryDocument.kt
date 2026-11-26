@@ -63,6 +63,7 @@ internal data class DiaryLayout(
     val areaEraser: Boolean = false,
     val eraserSize: Float = 24f,
     val sheetIds: List<String> = emptyList(),
+    val resizeHintSeen: Boolean = false,
 ) {
     fun encode(): String {
         val ink = JSONArray()
@@ -83,6 +84,7 @@ internal data class DiaryLayout(
         return JSONObject()
             .put("version", 2)
             .put("sheets", JSONArray(sheetIds))
+            .put("resizeHintSeen", resizeHintSeen)
             .put("opacity", opacity)
             .put("sensitivity", sensitivity)
             .put("areaEraser", areaEraser)
@@ -168,6 +170,7 @@ internal data class DiaryLayout(
                     .optJSONArray("sheets")
                     ?.let { ids -> List(ids.length()) { ids.getString(it) } }
                     .orEmpty(),
+                json.optBoolean("resizeHintSeen", false),
             )
         }
     }

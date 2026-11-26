@@ -185,6 +185,7 @@ internal class WritingSession(
                     mode = layout.mode,
                     areaEraser = layout.areaEraser,
                     eraserSize = layout.eraserSize,
+                    resizeHintSeen = layout.resizeHintSeen,
                 ),
             record = false,
             edited = true,
@@ -296,6 +297,14 @@ internal fun DiaryEditor(
         session.update(art = session.layout.copy(mode = name), record = false)
         if (name != "Photo") selected = ""
     }
+    var hintedPrint by remember(page.id) { mutableStateOf<String?>(null) }
+    val accessibility = LocalAccessibilityManager.current
+    LaunchedEffect(hintedPrint) {
+        if (hintedPrint != null) {
+            delay(accessibility?.calculateRecommendedTimeoutMillis(5500, containsText = true) ?: 5500)
+            hintedPrint = null
+        }
+    }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri != null)
@@ -332,10 +341,12 @@ internal fun DiaryEditor(
                             ),
                             layout.copy(
                                 mode = "Photo",
+                                resizeHintSeen = true,
                                 prints = layout.prints + (file.name to PrintPosition(sheet)),
                             ),
                         )
                         selected = file.name
+                        hintedPrint = if (layout.resizeHintSeen) null else file.name
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         session.error = "Couldn’t import the attachment."
@@ -393,40 +404,26 @@ internal fun DiaryEditor(
             ),
         )
     }
-    Column(Modifier.fillMaxSize().background(ivory)) {
+    val header: @Composable () -> Unit = {
         BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
             val compact = maxWidth < 590.dp
-            Row(
-                Modifier.align(Alignment.CenterStart),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            val statusColor = if (session.status == "Save failed") MaterialTheme.colorScheme.error else sage
+            Box(Modifier.align(Alignment.CenterStart)) {
                 Action("arrow-left", "Back to chapter", !session.locked) { leave() }
-                Box {
-                    Action("menu", "Navigate", !session.locked) { menu = true }
-                    DropdownMenu(menu, { menu = false }, containerColor = ivory) {
-                        tabs.forEach { (tab, _) ->
-                            DropdownMenuItem(
-                                text = { Text(tab) },
-                                onClick = {
-                                    menu = false
-                                    leave { if (tab == "Diaries") close(it) else navigate(tab) }
-                                },
-                            )
-                        }
-                    }
-                }
             }
-            Text(
-                page.title.ifBlank {
-                    displayStamp(page.created, if (compact) "MMMd" else "yMMMEd")
-                },
-                Modifier.align(Alignment.Center).widthIn(max = maxWidth * .36f).clickable {
-                    dialog = "Title"
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontSize = uiSp(if (compact) 17 else 22),
-            )
+            Column(
+                Modifier.align(Alignment.Center).padding(end = 18.dp)
+                    .widthIn(max = (maxWidth - 144.dp).coerceAtLeast(44.dp)).clickable { dialog = "Title" },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    page.title.ifBlank { displayStamp(page.created, if (compact) "MMMd" else "yMMMEd") },
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontSize = uiSp(if (compact) 16 else 22),
+                    lineHeight = uiSp(if (compact) 19 else 26),
+                )
+                if (compact) Text(savingLabel, color = statusColor, fontSize = uiSp(11), lineHeight = uiSp(14), maxLines = 1)
+            }
             Row(
                 Modifier.align(Alignment.CenterEnd).padding(end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -436,9 +433,7 @@ internal fun DiaryEditor(
                         savingLabel,
                         Modifier.padding(end = 10.dp),
                         fontSize = uiSp(14),
-                        color =
-                            if (session.status == "Save failed") MaterialTheme.colorScheme.error
-                            else sage,
+                        color = statusColor,
                     )
                 Button(
                     onClick = { leave(true) },
@@ -450,13 +445,10 @@ internal fun DiaryEditor(
                 }
             }
         }
-        if (
-            with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } <
-                590.dp
-        )
-            Note(savingLabel, Modifier.padding(start = 12.dp))
+    }
+    val tools: @Composable () -> Unit = {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val toolWidth = ((maxWidth - 28.dp) / 10).coerceIn(54.dp, 160.dp)
+            val toolWidth = ((maxWidth - 26.dp) / 10).coerceIn(48.dp, 160.dp)
             Row(
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 9.dp, vertical = 3.dp)
@@ -711,6 +703,10 @@ internal fun DiaryEditor(
                                 }
                                 "More" -> {
                                     DropdownMenuItem(
+                                        text = { Text(wording("Navigate", "이동")) },
+                                        onClick = { panel = ""; menu = true },
+                                    )
+                                    DropdownMenuItem(
                                         text = { Text(wording("Lasso selection", "올가미 선택")) },
                                         onClick = {
                                             panel = ""
@@ -769,18 +765,40 @@ internal fun DiaryEditor(
                 }
             }
         }
+    }
+    Column(Modifier.fillMaxSize().background(ivory)) {
+        EditorControls(header, tools)
         WritingSpread(
             session,
             prefs,
             motion,
             selected,
-            { selected = it },
+            hintedPrint != null && hintedPrint == selected && art.mode == "Photo",
+            { selected = it; hintedPrint = null },
             { viewing = it },
             ::addPage,
         ) { visible, written ->
             pageCount = visible
             textPages = written
         }
+    }
+    if (menu) {
+        AlertDialog(
+            onDismissRequest = { menu = false },
+            containerColor = ivory,
+            title = { Title(wording("Navigate", "이동")) },
+            text = {
+                Column {
+                    tabs.forEach { (tab, _) ->
+                        TextButton(onClick = {
+                            menu = false
+                            leave { if (tab == "Diaries") close(it) else navigate(tab) }
+                        }) { Text(tab) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { menu = false }) { Text(wording("Close", "닫기")) } },
+        )
     }
     val requested = deletion
     if (requested != null) {
@@ -849,4 +867,18 @@ internal fun DiaryEditor(
             text = { Text(session.error) },
             confirmButton = { TextButton(onClick = { session.error = "" }) { Text("OK") } },
         )
+}
+
+@Composable
+private fun EditorControls(header: @Composable () -> Unit, tools: @Composable () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= 740.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(284.dp)) { header() }
+                Box(Modifier.weight(1f)) { tools() }
+            }
+        } else {
+            Column { header(); tools() }
+        }
+    }
 }

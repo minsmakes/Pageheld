@@ -61,6 +61,7 @@ private suspend fun PointerInputScope.trackInkContacts(
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolean, zoom: Float) {
+    val accent = sage
     val art = session.layout
     val enabled = interactive && art.mode in listOf("Pen", "Eraser", "Lasso")
     val density = LocalDensity.current.density
@@ -380,11 +381,11 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                 )
             }
             if (trace.size > 1)
-                for (i in 1 until trace.size) drawLine(sage, trace[i - 1], trace[i], 1.4.dp.toPx())
+                for (i in 1 until trace.size) drawLine(accent, trace[i - 1], trace[i], 1.4.dp.toPx())
             val box = if (preview != null && art.mode == "Lasso") null else selectedBounds
             box?.inflate(4.dp.toPx())?.let {
                 drawRect(
-                    sage,
+                    accent,
                     it.topLeft,
                     it.size,
                     style =

@@ -279,6 +279,7 @@ internal suspend fun restore(book: Notebook, uri: Uri, password: String) {
                             listOf(
                                 "paper",
                                 "tone",
+                                "notebookTheme",
                                 "font",
                                 "spacing",
                                 "margin",

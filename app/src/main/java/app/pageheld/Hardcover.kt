@@ -15,8 +15,8 @@ import androidx.compose.ui.unit.*
 import kotlin.math.*
 
 internal object Binding {
-    val cloth = Color(0xff78866b)
-    val board = Color(0xff59664e)
+    val cloth: Color @Composable get() = LocalNotebookPalette.current.cloth
+    val board: Color @Composable get() = sage
     val desk = Color(0xffe5e2d9)
     val foil = Color(0xfff4ebcd)
     val ribbon = Color(0xffa78b72)
@@ -135,7 +135,7 @@ internal fun BoardFace(inner: Boolean, letteringScale: Float) {
     BoxWithConstraints(
         Modifier.fillMaxSize()
             .clip(Binding.corner)
-            .linen(if (inner) Color(0xffc5ccb5) else Binding.cloth)
+            .linen(if (inner) pale else Binding.cloth)
             .drawWithCache {
                 val joint =
                     Brush.horizontalGradient(

@@ -30,6 +30,7 @@ internal fun WritingSpread(
     prefs: Map<String, String>,
     motion: Boolean,
     selected: String,
+    showResizeHint: Boolean,
     select: (String) -> Unit,
     view: (String) -> Unit,
     addPage: () -> Unit,
@@ -474,6 +475,16 @@ internal fun WritingSpread(
                 }
             }
         }
+        if (showResizeHint) {
+            Text(
+                wording("Pinch with two fingers to resize.", "두 손가락을 오므리거나 벌려 크기를 조절하세요."),
+                Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp, vertical = 36.dp)
+                    .shadow(2.dp, CircleShape).background(ink, CircleShape)
+                    .semantics { liveRegion = LiveRegionMode.Polite }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                color = ivory, fontSize = uiSp(14),
+            )
+        }
         if (pagePicker) {
             AlertDialog(
                 onDismissRequest = { pagePicker = false },
@@ -595,7 +606,7 @@ private fun PhotoPrint(
         val left = (pw - width) * working.x.coerceIn(0f, 1f)
         val top = (ph - height) * working.y.coerceIn(0f, 1f)
         val density = LocalDensity.current
-        val outline = Color(0xff76954c)
+        val outline = sage
         Box(
             Modifier.offset(left, top)
                 .size(width, height)
@@ -674,13 +685,7 @@ private fun PhotoPrint(
                         outline,
                         style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()),
                     )
-                    for (x in listOf(0f, .5f, 1f)) for (y in listOf(0f, .5f, 1f)) if (
-                        x != .5f || y != .5f
-                    ) {
-                        val o = Offset(size.width * x, size.height * y)
-                        drawCircle(outline, 5.dp.toPx(), o)
-                        drawCircle(ivory, 2.5.dp.toPx(), o)
-                    }
+
                 }
         }
     }

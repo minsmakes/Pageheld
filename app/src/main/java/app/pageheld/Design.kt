@@ -17,8 +17,15 @@ import kotlin.math.*
 
 val ink = Color(0xff343a31)
 val muted = Color(0xff63695e)
-val sage = Color(0xff627547)
-val pale = Color(0xffeceddf)
+internal enum class NotebookPalette(val id: String, val korean: String, val accent: Color, val soft: Color, val cloth: Color) {
+    Sage("Sage", "세이지", Color(0xff627547), Color(0xffeceddf), Color(0xffa4ad80)),
+    Denim("Denim", "데님", Color(0xff435f79), Color(0xffe6edf2), Color(0xff93adbf)),
+    Rose("Rose", "로즈", Color(0xff884e5c), Color(0xfff4e5e6), Color(0xffcba2a7)),
+    Umber("Umber", "엄버", Color(0xff795737), Color(0xfff1e8dc), Color(0xffc4a88a));
+}
+internal val LocalNotebookPalette = staticCompositionLocalOf { NotebookPalette.Sage }
+val sage: Color @Composable get() = LocalNotebookPalette.current.accent
+val pale: Color @Composable get() = LocalNotebookPalette.current.soft
 val ivory = Color(0xfffbf4e9)
 val edge = Color(0xffddd4c1)
 val swatches =

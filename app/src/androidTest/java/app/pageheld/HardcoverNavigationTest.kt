@@ -155,6 +155,113 @@ class HardcoverNavigationTest {
     }
 
     @Test
+    fun appearanceChangesTheSavedNotebookTheme() {
+        val context = instrument.targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, NotebookDb::class.java).build()
+        val book = Notebook(context, db)
+        val previous = runBlocking { book.settings.first()["notebookTheme"] ?: "Sage" }
+        val target = if (previous == "Denim") "Rose" else "Denim"
+        val seed = Page(title = "Theme preview")
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { host ->
+                    host.setContent {
+                        val prefs by book.settings.collectAsState(initial = emptyMap())
+                        PageheldTheme(book, prefs) {
+                            DiaryEditor(seed, book, emptyList(), emptyList(), prefs, false, "", {}) {}
+                        }
+                    }
+                }
+                node(seed.title)
+                tap("More")
+                tap("Appearance")
+                val chip = node(target)
+                val control = if (chip.isClickable) chip else requireNotNull(chip.parent)
+                assertTrue(control.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                runBlocking { kotlinx.coroutines.withTimeout(5000) { book.settings.first { it["notebookTheme"] == target } } }
+                closeMenu()
+                tap("More")
+                tap("Appearance")
+                assertTrue(node(target).isSelected || node(target).parent?.isSelected == true ||
+                    node(target).isChecked || node(target).parent?.isChecked == true)
+            }
+        } finally {
+            runBlocking { book.applySettings(mapOf("notebookTheme" to previous)) }
+            db.close()
+        }
+    }
+
+    @Test
+    fun firstImportShowsOneResizeHintPerDiary() {
+        val context = instrument.targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, NotebookDb::class.java).build()
+        val book = Notebook(context, db)
+        val first = Page(title = "First entry")
+        val second = Page(title = "Second entry")
+        val source = java.io.File.createTempFile("picker", ".jpg", context.cacheDir)
+        context.resources.openRawResource(R.drawable.diary_desk).use { input ->
+            source.outputStream().use { input.copyTo(it) }
+        }
+        val picker = object : androidx.activity.result.ActivityResultRegistryOwner {
+            override val activityResultRegistry = object : androidx.activity.result.ActivityResultRegistry() {
+                override fun <I, O> onLaunch(requestCode: Int,
+                    contract: androidx.activity.result.contract.ActivityResultContract<I, O>,
+                    input: I, options: androidx.core.app.ActivityOptionsCompat?) {
+                    dispatchResult(requestCode, android.app.Activity.RESULT_OK,
+                        android.content.Intent().setData(android.net.Uri.fromFile(source)))
+                }
+            }
+        }
+        val hint = "Pinch with two fingers to resize."
+        val imported = mutableSetOf<String>()
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                fun open(page: Page) = scenario.onActivity { host ->
+                    host.setContent {
+                        key(page.id) {
+                            CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides picker) {
+                                PageheldTheme(book, emptyMap()) {
+                                    DiaryEditor(page, book, emptyList(), emptyList(), emptyMap(), false, "", {}) {}
+                                }
+                            }
+                        }
+                    }
+                }
+                fun attach(page: Page, count: Int): Page {
+                    node(page.title)
+                    tap("Photo")
+                    tap("Add photo or video")
+                    val saved = runBlocking {
+                        kotlinx.coroutines.withTimeout(5000) {
+                            book.dao.pages().first { pages -> pages.any { it.id == page.id && it.files().size == count } }
+                                .single { it.id == page.id }
+                        }
+                    }
+                    imported.addAll(saved.files())
+                    assertTrue(DiaryLayout.read(saved).resizeHintSeen)
+                    return saved
+                }
+                open(first)
+                val saved = attach(first, 1)
+                node(hint)
+                val timeout = SystemClock.uptimeMillis() + 8000
+                while (find(hint) != null && SystemClock.uptimeMillis() < timeout) SystemClock.sleep(100)
+                assertNull(find(hint))
+                open(second)
+                attach(second, 1)
+                node(hint)
+                open(saved)
+                attach(first, 2)
+                assertNull(find(hint))
+            }
+        } finally {
+            imported.forEach { java.io.File(mediaDir(book), it).delete() }
+            source.delete()
+            db.close()
+        }
+    }
+
+    @Test
     fun inkOnTemporarySheetCanBeEditedDeletedAndRestored() {
         val context = instrument.targetContext
         val db = Room.inMemoryDatabaseBuilder(context, NotebookDb::class.java).build()
@@ -188,6 +295,15 @@ class HardcoverNavigationTest {
                             ) {}
                         }
                     }
+                }
+                val back = bounds("Back to chapter")
+                val more = find("More")
+                val pen = bounds("Pen")
+                val paperBounds = bounds("Ink page 1")
+                if (more != null && find("Ink page 2") != null &&
+                    instrument.targetContext.resources.configuration.screenWidthDp >= 960) {
+                    assertTrue("Toolbar and Back should share a row", pen.centerY() in back.top..back.bottom)
+                    android.util.Log.i("PageheldLayout", "Header=$back tools=$pen paper=$paperBounds")
                 }
                 val spread =
                     if (find("Ink page 2") != null) 2
@@ -579,6 +695,9 @@ class HardcoverNavigationTest {
                 tap("More")
                 tap("Add page")
                 saved { '\u000c' in it.body }
+                automation.waitForIdle(300, 4000)
+                assertNull(find("Navigate"))
+                tap("More")
                 tap("Navigate")
                 tap("Today")
                 node("Diaries")

@@ -50,13 +50,17 @@ internal fun PageheldTheme(
     val family = notebookFont(book.context, prefs["displayFont"])
     val scale = displaySize(prefs) / 100f
     val typography = remember(family, scale) { displayTypography(family, scale) }
-    CompositionLocalProvider(LocalDisplayFont provides family, LocalDisplayScale provides scale) {
+    val palette = NotebookPalette.entries.find { it.id == prefs["notebookTheme"] } ?: NotebookPalette.Sage
+    CompositionLocalProvider(LocalDisplayFont provides family, LocalDisplayScale provides scale,
+        LocalNotebookPalette provides palette) {
         MaterialTheme(
             typography = typography,
             colorScheme =
                 lightColorScheme(
                     primary = sage,
                     onPrimary = Color.White,
+                    secondary = sage,
+                    primaryContainer = pale,
                     background = ivory,
                     surface = ivory,
                     onSurface = ink,

@@ -423,6 +423,7 @@ private fun TodaySheet(
     all: () -> Unit,
     write: () -> Unit,
 ) {
+    val accent = sage
     BoxWithConstraints(
         Modifier.fillMaxSize()
             .background(Color(0xffe9e0cf))
@@ -432,7 +433,7 @@ private fun TodaySheet(
                 var y = size.height * .72f
                 while (x < size.width) {
                     drawRect(
-                        sage.copy(alpha = .13f),
+                        accent.copy(alpha = .13f),
                         Offset(x, y),
                         androidx.compose.ui.geometry.Size(step / 2, size.height - y),
                     )
@@ -440,7 +441,7 @@ private fun TodaySheet(
                 }
                 while (y < size.height) {
                     drawRect(
-                        sage.copy(alpha = .13f),
+                        accent.copy(alpha = .13f),
                         Offset(0f, y),
                         androidx.compose.ui.geometry.Size(size.width, step / 2),
                     )
@@ -545,6 +546,7 @@ private fun TodaySheet(
 
 @Composable
 private fun DiaryCover(owner: String, year: Int, motion: Boolean, open: () -> Unit) {
+    val palette = LocalNotebookPalette.current
     val rotation = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     var opening by remember { mutableStateOf(false) }
@@ -570,12 +572,12 @@ private fun DiaryCover(owner: String, year: Int, motion: Boolean, open: () -> Un
                     }
                     .shadow(5.dp, round)
                     .clip(round)
-                    .linen(Color(0xffa4ad80))
+                    .linen(palette.cloth)
                     .clickable(onClickLabel = "Open cover") { start() }
                     .drawBehind {
                         val inset = 10.dp.toPx()
                         drawRoundRect(
-                            Color(0xff737d58),
+                            palette.accent,
                             Offset(inset, inset),
                             androidx.compose.ui.geometry.Size(
                                 size.width - 2 * inset,
@@ -605,12 +607,12 @@ private fun DiaryCover(owner: String, year: Int, motion: Boolean, open: () -> Un
                     Modifier.align(Alignment.Center),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Botanical(Modifier.size(h * .14f), Color(0xff5d753e))
+                    Botanical(Modifier.size(h * .14f), palette.accent)
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "Pageheld.",
                         fontSize = (h.value * .088f).coerceIn(26f, 54f).sp,
-                        color = Color(0xff34462a),
+                        color = ink,
                     )
                     Text(
                         owner.ifBlank { wording("A collection of my stories", "나의 이야기 모음") },
@@ -628,7 +630,7 @@ private fun DiaryCover(owner: String, year: Int, motion: Boolean, open: () -> Un
                         .width(h * .034f)
                         .fillMaxHeight()
                         .shadow(2.dp)
-                        .linen(Color(0xff546246))
+                        .linen(palette.accent)
                 )
             }
         }
@@ -764,7 +766,7 @@ private fun ChapterIndex(
                             }
                             Botanical(
                                 Modifier.align(Alignment.BottomEnd).offset(12.dp, 9.dp).size(48.dp),
-                                Color(0xff789348),
+                                sage,
                             )
                         }
                         Spacer(Modifier.height(16.dp))

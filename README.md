@@ -7,7 +7,7 @@
   <a href="https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk"><img src="docs/readme/download-tablet.svg" alt="Download tablet edition"></a>
 </p>
 
-<p align="center">Source version 1.9 · Android 9 or newer</p>
+<p align="center">Source version 1.9.1 · Android 9 or newer</p>
 
 Pageheld is a personal journal for Android. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
 
@@ -29,11 +29,13 @@ Pageheld is a personal journal for Android. Write on ruled ivory paper, keep pho
 
 Today shows the local date and your latest writings. Choose **Today’s diary** to continue the day’s entry. In **Diaries**, open the stitched cover and choose a chapter or **New story**. Unfiled entries appear under their month. Custom chapters keep their original order and membership.
 
-The upper toolbar switches between typing, pen, eraser, photographs, mood, weather and places. Text flows onto additional sheets as you write. Use **More → Add page** for a deliberate break. Tap the title to rename an entry, or choose the **Note** template under **Template & chapter**. Tap a print to select it, drag to move and pinch to resize. Long-press to open the attachment viewer.
+The toolbar switches between typing, pen, eraser, media, mood, weather and places. On wide tablets, the toolbar sits alongside the entry title to give the paper more vertical space. Text flows onto additional sheets as you write. Use **More → Add page** for a deliberate break. Tap the title to rename an entry, or choose the **Note** template under **Template & chapter**. The first import in each entry shows a short two-finger resizing hint. Tap a print to select it, drag to move and pinch to resize. Long-press to open the attachment viewer.
 
-A successful **Draft saved** status means the edit reached Room. **Done** completes the entry and returns to its chapter. The navigation menu beside Back can take you to Today or Moments while preserving your draft. Select Diaries to resume it.
+A successful **Draft saved** status means the edit reached Room. **Done** completes the entry and returns to its chapter. **More → Navigate** can take you to Today or Moments while preserving your draft. Select Diaries to resume it.
 
-Tap **펜** to write with a stylus. Tap it again to choose a nib, adjust the preview, save a favorite or enable finger writing. Tap the active **지우개** to choose whole-stroke or area erasing. **더보기 → 올가미 선택** lets you circle handwriting, drag it across the sheet and open **선택 편집** to copy, resize or rotate it.
+Choose **More → Appearance → Notebook theme** to switch between Sage, Denim, Rose and Umber.
+
+Tap **펜** to write with a stylus. Tap it again to choose an illustrated nib, adjust width, opacity and pressure with a live preview, save a favorite or enable finger writing. Tap the active **지우개** to choose whole-stroke or area erasing. **더보기 → 올가미 선택** lets you circle handwriting, drag it across the sheet and open **선택 편집** to copy, resize or rotate it.
 
 Swipe across the paper to turn within the same dated entry. When drawing with a finger, swipe from the outer book margin. Turning past the last spread presents blank paper. Adding content saves the sheet. The deletion options in **더보기** identify the side and page number, and **실행 취소** restores a deleted saved sheet.
 

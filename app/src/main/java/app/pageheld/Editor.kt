@@ -118,6 +118,23 @@ fun Appearance(
     setPaper: (String) -> Unit,
     setting: (String, String) -> Unit,
 ) {
+    Title(wording("Notebook theme", "다이어리 테마"), 21)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        NotebookPalette.entries.forEach { palette ->
+            val active = LocalNotebookPalette.current == palette
+            FilterChip(
+                selected = active,
+                onClick = { setting("notebookTheme", palette.id) },
+                label = { Text(wording(palette.id, palette.korean)) },
+                leadingIcon = {
+                    Box(Modifier.size(16.dp).background(palette.accent, CircleShape),
+                        contentAlignment = Alignment.Center) {
+                        if (active) Glyph("check", tint = Color.White, size = 12)
+                    }
+                },
+            )
+        }
+    }
     Title("Paper styles", 21)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val columns = if (maxWidth >= 410.dp) 6 else 3
@@ -226,13 +243,13 @@ internal fun EditorDialog(
                             singleLine = true,
                         )
                     "Appearance" -> {
-                        FontOptions(session.book, settings, includeDisplay = false)
                         Appearance(
                             settings,
                             page.paper.ifBlank { settings["paper"] ?: "Blank" },
                             { session.update(page.copy(paper = it)) },
                             session.book::setting,
                         )
+                        FontOptions(session.book, settings, includeDisplay = false)
                     }
                     "Template & chapter" -> {
                         Title("Entry template")

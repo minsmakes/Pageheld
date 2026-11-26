@@ -255,6 +255,7 @@ internal fun NotebookSpread(
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 tabs.forEachIndexed { i, (name, icon) ->
+                    val board = Binding.board
                     val active = name == section
                     Box(
                         Modifier.fillMaxWidth()
@@ -273,7 +274,7 @@ internal fun NotebookSpread(
                                 .drawBehind {
                                     if (active)
                                         drawLine(
-                                            Binding.board,
+                                            board,
                                             Offset(2.dp.toPx(), 0f),
                                             Offset(2.dp.toPx(), size.height),
                                             2.dp.toPx(),

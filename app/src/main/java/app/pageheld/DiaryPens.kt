@@ -183,6 +183,7 @@ internal class InkShape(private val line: InkLine, private val frame: InkFrame) 
     }
 }
 
+private val nibArt = listOf(R.drawable.nib_ballpoint, R.drawable.nib_fountain, R.drawable.nib_brush, R.drawable.nib_marker, R.drawable.nib_pencil)
 private val names = listOf("Ballpoint", "Fountain", "Brush", "Highlight", "Pencil")
 private val labels = listOf("볼펜", "만년필", "붓펜", "형광펜", "연필")
 private val colors =
@@ -197,22 +198,23 @@ internal fun PenPanel(session: WritingSession) {
         session.update(art = pen.applyTo(session.layout), record = false)
         session.book.setting("lastPen", pen.token())
     }
-    Column(Modifier.width(286.dp).padding(horizontal = 12.dp, vertical = 4.dp)) {
-        Row {
+    Column(Modifier.width(318.dp).padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Title(wording("Writing tools", "필기 도구"), 18)
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             listOf(0, 1, 4, 2, 3).forEach { n ->
-                Text(
-                    wording(names[n], labels[n]),
-                    Modifier.weight(1f)
-                        .clip(round)
-                        .background(if (n == pen.nib) pale else ivory)
-                        .clickable {
-                            pen = pen.copy(nib = n)
-                            save()
-                        }
-                        .semantics { contentDescription = names[n] }
-                        .padding(vertical = 7.dp),
-                    fontSize = uiSp(12),
-                )
+                val active = pen.nib == n
+                Column(
+                    Modifier.weight(1f).clip(round)
+                        .background(if (active) pale else ivory)
+                        .border(if (active) 1.5.dp else .6.dp, if (active) sage else edge, round)
+                        .clickable { pen = pen.copy(nib = n); save() }
+                        .semantics { contentDescription = names[n]; selected = active }
+                        .padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Image(androidx.compose.ui.res.painterResource(nibArt[n]), null, Modifier.size(40.dp))
+                    Text(wording(names[n], labels[n]), fontSize = uiSp(11), maxLines = 1)
+                }
             }
         }
         Canvas(Modifier.fillMaxWidth().height(37.dp).background(Color(0xfffaf5ed), round)) {
@@ -305,6 +307,7 @@ internal fun PenPanel(session: WritingSession) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PenSlider(
     label: String,
@@ -315,12 +318,24 @@ internal fun PenSlider(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.width(68.dp), fontSize = uiSp(13))
+        val accent = sage
+        val rail = pale
         Slider(
             value,
             change,
             Modifier.weight(1f).height(36.dp).semantics { contentDescription = label },
             onValueChangeFinished = finished,
             valueRange = range,
+            thumb = {
+                Box(Modifier.size(18.dp).background(ivory, CircleShape)
+                    .border(2.dp, accent, CircleShape))
+            },
+            track = {
+                Box(Modifier.fillMaxWidth().height(4.dp).background(rail, CircleShape)) {
+                    val fraction = ((value - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
+                    Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(accent, CircleShape))
+                }
+            },
         )
     }
 }
