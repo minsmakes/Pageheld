@@ -56,7 +56,7 @@ internal fun WritingSpread(
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     BoxWithConstraints(
-        Modifier.fillMaxSize().motionEventSpy(session::observeInput).background(Color(0xffe8dece))
+        Modifier.fillMaxSize().motionEventSpy(session::observeInput).background(Binding.desk)
     ) {
         val wide = maxWidth >= 580.dp
         val span = if (wide) 2 else 1

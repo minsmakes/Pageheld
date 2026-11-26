@@ -61,8 +61,8 @@ internal fun PageheldTheme(
                     onPrimary = Color.White,
                     secondary = sage,
                     primaryContainer = pale,
-                    background = ivory,
-                    surface = ivory,
+                    background = palette.background,
+                    surface = palette.background,
                     onSurface = ink,
                     secondaryContainer = pale,
                 ),
@@ -95,7 +95,7 @@ internal fun NotebookScreens(
         book.errors.collect { Toast.makeText(book.context, it, Toast.LENGTH_LONG).show() }
     }
     if (data == null || places == null || preferences == null) {
-        Box(Modifier.fillMaxSize().background(ivory), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(notebookBackground), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = sage)
         }
         return

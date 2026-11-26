@@ -165,17 +165,6 @@ interface JournalDao {
 
     @Upsert suspend fun save(page: Page)
 
-    @Transaction
-    suspend fun saveAfterRemovingAttachment(page: Page, filename: String) {
-        save(page)
-        locationsFor(page.id).forEach { location ->
-            val files = location.media.lines()
-            if (filename in files) {
-                writeLocation(location.copy(media = files.filter { it != filename }.joinToString("\n")))
-            }
-        }
-    }
-
     @Upsert suspend fun save(chapter: Chapter)
 
     @Query("DELETE FROM Page WHERE id=:id") suspend fun removePage(id: String)

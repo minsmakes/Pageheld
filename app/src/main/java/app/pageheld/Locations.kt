@@ -27,34 +27,19 @@ import java.time.*
 import kotlinx.coroutines.*
 
 @Composable
-fun LocationNotebook(
+internal fun LocationNotebook(
     page: Page,
     book: Notebook,
     locations: List<DiaryLocation>,
+    saveLocation: (DiaryLocation) -> Unit,
+    moveLocation: (String, Int) -> Unit,
+    removeLocation: (String) -> Unit,
     close: () -> Unit,
 ) {
     var editing by rememberSaveable {
         mutableStateOf<String?>(if (locations.isEmpty()) uid() else null)
     }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
     var removing by remember { mutableStateOf<DiaryLocation?>(null) }
-    val scope = rememberCoroutineScope()
-    fun write(done: () -> Unit = {}, operation: suspend () -> Unit) {
-        if (busy) return
-        busy = true
-        scope.launch {
-            try {
-                operation()
-                done()
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                error = "Couldn’t save the location. Please try again."
-            } finally {
-                busy = false
-            }
-        }
-    }
     var dirty by rememberSaveable { mutableStateOf(false) }
     var discard by rememberSaveable { mutableStateOf(false) }
     fun leaveForm() {
@@ -62,25 +47,22 @@ fun LocationNotebook(
         if (locations.isEmpty()) close() else editing = null
     }
     fun back() {
-        if (!busy) {
-            if (editing != null) {
-                if (dirty) discard = true else leaveForm()
-            } else close()
-        }
+        if (editing != null) {
+            if (dirty) discard = true else leaveForm()
+        } else close()
     }
     Dialog(
         onDismissRequest = ::back,
         properties =
             DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
     ) {
-        Column(Modifier.fillMaxSize().background(ivory).safeDrawingPadding().imePadding()) {
+        Column(Modifier.fillMaxSize().background(notebookBackground).safeDrawingPadding().imePadding()) {
             Header(
                 if (editing == null) "Places on this page" else "Location",
-                { Action("arrow-left", "Back", !busy, ::back) },
+                { Action("arrow-left", "Back", click = ::back) },
             ) {
-                if (editing == null) Action("plus", "Add location", !busy) { editing = uid() }
+                if (editing == null) Action("plus", "Add location") { editing = uid() }
             }
-            if (error.isNotBlank()) Note(error, Modifier.padding(16.dp))
             if (editing != null)
                 key(editing) {
                     val seed = remember {
@@ -92,15 +74,11 @@ fun LocationNotebook(
                         page,
                         book,
                         locations.none { it.id == seed.id },
-                        busy,
                         { dirty = it },
                     ) { value ->
-                        write({
-                            dirty = false
-                            close()
-                        }) {
-                            book.dao.saveLocation(page, value)
-                        }
+                        saveLocation(value)
+                        dirty = false
+                        close()
                     }
                 }
             else
@@ -117,7 +95,7 @@ fun LocationNotebook(
                         ) {
                             Column(
                                 Modifier.weight(1f)
-                                    .clickable(enabled = !busy) { editing = loc.id }
+                                    .clickable { editing = loc.id }
                                     .padding(vertical = 8.dp)
                             ) {
                                 Title(loc.label(), 19)
@@ -133,24 +111,24 @@ fun LocationNotebook(
                                 }
                                 if (loc.notes.isNotBlank()) Note(loc.notes)
                             }
-                            Action("arrow-up", "Move ${loc.label()} earlier", !busy && index > 0) {
-                                write { book.dao.moveLocation(page.id, loc.id, -1) }
+                            Action("arrow-up", "Move ${loc.label()} earlier", index > 0) {
+                                moveLocation(loc.id, -1)
                             }
                             Action(
                                 "arrow-down",
                                 "Move ${loc.label()} later",
-                                !busy && index < locations.lastIndex,
+                                index < locations.lastIndex,
                             ) {
-                                write { book.dao.moveLocation(page.id, loc.id, 1) }
+                                moveLocation(loc.id, 1)
                             }
-                            Action("trash-2", "Remove ${loc.label()}", !busy) { removing = loc }
+                            Action("trash-2", "Remove ${loc.label()}") { removing = loc }
                         }
                         HorizontalDivider(color = edge)
                     }
-                    TextButton(onClick = { editing = uid() }, enabled = !busy) {
+                    TextButton(onClick = { editing = uid() }) {
                         Text("Add location")
                     }
-                    Button(onClick = close, enabled = !busy) { Text("Return to page") }
+                    Button(onClick = close) { Text("Return to page") }
                 }
         }
         if (discard)
@@ -180,7 +158,7 @@ fun LocationNotebook(
                     TextButton(
                         onClick = {
                             removing = null
-                            write { book.dao.removeLocation(page.id, loc.id) }
+                            removeLocation(loc.id)
                         }
                     ) {
                         Text("Remove")
@@ -198,7 +176,6 @@ private fun ColumnScope.LocationForm(
     page: Page,
     book: Notebook,
     isNew: Boolean,
-    busy: Boolean,
     onDirty: (Boolean) -> Unit,
     save: (DiaryLocation) -> Unit,
 ) {
@@ -338,7 +315,7 @@ private fun ColumnScope.LocationForm(
         horizontalArrangement = Arrangement.End,
     ) {
         Button(
-            enabled = !busy && (name.isNotBlank() || (lat != null && lon != null)),
+            enabled = (name.isNotBlank() || (lat != null && lon != null)),
             onClick = { save(draft.copy(name = name.trim())) },
         ) {
             Text(if (isNew) "Add this place" else "Save changes")

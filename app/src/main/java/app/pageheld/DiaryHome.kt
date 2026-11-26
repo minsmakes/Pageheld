@@ -92,7 +92,7 @@ internal fun DiaryHome(
         mutableStateOf(if (prefs["openingCover"] == "false") "Index" else "Cover")
     }
     var chapter by rememberSaveable { mutableStateOf("") }
-    var entry by rememberSaveable { mutableStateOf(pages.firstOrNull { it.id == prefs["resumeEntry"] && it.draft }?.id.orEmpty()) }
+    var entry by rememberSaveable { mutableStateOf("") }
     var newTemplate by rememberSaveable { mutableStateOf("Free Writing") }
     var entryTime by rememberSaveable { mutableLongStateOf(0L) }
     var attachment by rememberSaveable { mutableStateOf("") }
@@ -102,7 +102,6 @@ internal fun DiaryHome(
     val editing = section == "Diaries" && entry.isNotEmpty()
     val motion = systemMotionEnabled() && prefs["reduceMotion"] != "true"
     fun edit(page: Page, file: String = "") {
-        book.setting("resumeEntry",page.id)
         entry = page.id
         newTemplate = page.template
         entryTime = page.created
@@ -124,7 +123,7 @@ internal fun DiaryHome(
     BackHandler(!editing && section != "Today") { back() }
     Column(
         Modifier.fillMaxSize()
-            .background(ivory)
+            .background(notebookBackground)
             .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
     ) {
         if (editing) {
@@ -138,7 +137,7 @@ internal fun DiaryHome(
                         chapter = chapter.takeIf { id -> chapters.any { it.id == id } },
                     )
             key(entry) {
-                // A rotation can recreate the editor before Room emits the preceding pen-up save.
+                // Load the latest saved entry before opening an editing session.
                 val entryId=entry
                 val restored by produceState<Page?>(null,entryId) {
                     val result=kotlinx.coroutines.CompletableDeferred<Page?>()
@@ -157,9 +156,12 @@ internal fun DiaryHome(
                     prefs,
                     motion,
                     attachment,
-                    navigate = { navigate(it) },
+                    navigate = {
+                        entry = ""
+                        attachment = ""
+                        navigate(it)
+                    },
                     close = { saved ->
-                        book.setting("resumeEntry","")
                         entry = ""
                         attachment = ""
                         section = "Diaries"
@@ -184,7 +186,6 @@ internal fun DiaryHome(
                         },
                         {
                             entry = ""
-                            book.setting("resumeEntry","")
                             bookmarks = false
                             chapter = ""
                             shelf = "All"
@@ -212,7 +213,7 @@ internal fun DiaryHome(
                         },
                     )
                 "Moments" ->
-                    Box(Modifier.fillMaxSize().padding(10.dp).clip(round).paper("Blank")) {
+                    Box(Modifier.fillMaxSize().padding(10.dp).clip(round).paper("Blank", notebookBackground)) {
                         Memories(
                             book,
                             pages,
@@ -332,7 +333,7 @@ private fun monthTitle(pages: List<Page>, key: String) =
 
 @Composable
 private fun NavigationHeader(section: String, select: (String) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth().height(57.dp).background(ivory)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(57.dp).background(notebookBackground)) {
         val compact = maxWidth < 610.dp
         Row(
             Modifier.align(Alignment.CenterStart).padding(start = if (compact) 8.dp else 22.dp),
@@ -426,7 +427,7 @@ private fun TodaySheet(
     val accent = sage
     BoxWithConstraints(
         Modifier.fillMaxSize()
-            .background(Color(0xffe9e0cf))
+            .background(Binding.desk)
             .drawBehind {
                 val step = 18.dp.toPx()
                 var x = 0f
@@ -495,10 +496,10 @@ private fun TodaySheet(
             }
             Spacer(Modifier.height(6.dp))
             Column(
-                Modifier.fillMaxWidth().border(1.dp, edge, round).clip(round).background(ivory)
+                Modifier.fillMaxWidth().border(1.dp, edge, round).clip(round).background(notebookBackground)
             ) {
                 Row(
-                    Modifier.fillMaxWidth().background(Color(0xffefe6d4)).padding(start = 12.dp),
+                    Modifier.fillMaxWidth().background(pale).padding(start = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Glyph("book-open", size = 20)
@@ -653,7 +654,7 @@ internal fun Desk() {
             Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
         )
-        Box(Modifier.fillMaxSize().background(Color(0xfff7e7cb).copy(alpha = .22f)))
+        Box(Modifier.fillMaxSize().background(Binding.desk.copy(alpha = .50f)))
     }
 }
 

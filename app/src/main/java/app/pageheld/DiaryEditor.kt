@@ -18,14 +18,19 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.room.withTransaction
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModelProvider
+import androidx.activity.compose.LocalActivity
 import java.io.File
 import kotlinx.coroutines.*
 
 internal class WritingSession(
-    initial: Page,
+    val initial: Page,
     val book: Notebook,
     private val scope: CoroutineScope,
     prefs: Map<String, String> = emptyMap(),
+    private val initialPlaces: List<DiaryLocation> = emptyList(),
 ) {
     var page by mutableStateOf(initial)
         private set
@@ -38,7 +43,19 @@ internal class WritingSession(
         )
         private set
 
-    var status by mutableStateOf(if (initial.draft) "Draft" else "Saved")
+    var places by mutableStateOf(initialPlaces)
+        private set
+    private val imported = mutableSetOf<String>()
+    val hasUnsavedChanges: Boolean
+        get() = page != initial || layout.lines != originalLayout.lines ||
+            layout.prints != originalLayout.prints || layout.sheetIds != originalLayout.sheetIds ||
+            places != initialPlaces
+    private val originalLayout = layout
+
+    var completedPage by mutableStateOf<Page?>(null)
+        private set
+
+    var status by mutableStateOf("Saved")
         private set
 
     var locked by mutableStateOf(false)
@@ -97,13 +114,10 @@ internal class WritingSession(
         finishInput?.invoke()
     }
 
-    private var revision = 0L
-
     fun update(
         next: Page = page,
         art: DiaryLayout = layout,
         record: Boolean = true,
-        edited: Boolean = record,
     ) {
         if (locked || (next == page && art == layout)) return
         if (record) {
@@ -118,54 +132,53 @@ internal class WritingSession(
                 art.withSheetCount(maxOf(art.contentCount(sheets.size), art.sheet + 1))
             else art
         layout = stored
-        page = next.copy(draft = edited || next.draft)
-        val snapshot = page
-        val document = persistedLayout(stored)
-        val ticket = ++revision
-        val save = book.persist { snapshot.copy(notebookLayout = document.encode()) }
-        status = "Saving…"
-        scope.launch {
-            try {
-                save.await()
-                if (ticket == revision) status = if (page.draft) "Draft saved" else "Saved"
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                if (ticket == revision) status = "Save failed"
-            }
-        }
+        page = next
+        if (status == "Save failed") status = "Saved"
+    }
+
+    fun trackImport(name: String) {
+        imported.add(name)
     }
 
     fun addPlace(place: DiaryLocation) {
-        if (locked) return
-        locked = true
-        val snapshot = page.copy(draft = true, notebookLayout = persistedLayout().encode())
-        val result = CompletableDeferred<Unit>()
-        ++revision
-        status = "Saving…"
-        book.queue {
-            try {
-                book.db.withTransaction {
-                    book.dao.save(snapshot)
-                    book.dao.saveLocation(snapshot, place)
-                }
-                result.complete(Unit)
-            } catch (e: Exception) {
-                result.completeExceptionally(e)
-            }
+        val index = places.indexOfFirst { it.id == place.id }
+        places = if (index >= 0) places.toMutableList().apply {
+            this[index] = place.copy(position = this[index].position)
+        } else places + place.copy(position = (places.lastOrNull()?.position ?: -1) + 1)
+    }
+
+    fun movePlace(id: String, delta: Int) {
+        val index = places.indexOfFirst { it.id == id }
+        val other = index + delta
+        if (index < 0 || other !in places.indices) return
+        places = places.toMutableList().apply {
+            val place = this[index]
+            this[index] = this[other].copy(position = place.position)
+            this[other] = place.copy(position = places[other].position)
         }
-        scope.launch {
-            try {
-                result.await()
-                page = snapshot
-                status = "Draft saved"
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                status = "Save failed"
-                error = "Couldn’t save the place. Please try again."
-            } finally {
-                locked = false
-            }
+    }
+
+    fun removePlace(id: String) {
+        places = places.filterNot { it.id == id }
+    }
+
+    fun removeAttachment(name: String) {
+        val next = page.copy(
+            media = page.files().filterNot { it == name }.joinToString("\n"),
+            mediaPositions = page.withMediaPosition(name, null),
+        )
+        places = places.map { place ->
+            place.copy(media = place.media.lines().filterNot { it == name }.joinToString("\n"))
         }
+        past.clear()
+        future.clear()
+        update(next, layout.copy(prints = layout.prints - name), record = false)
+    }
+
+    fun discardImports() {
+        val files = imported.toSet()
+        imported.clear()
+        if (files.isNotEmpty()) book.queue { files.forEach { File(mediaDir(book), it).delete() } }
     }
 
     fun undo(redo: Boolean) {
@@ -188,26 +201,45 @@ internal class WritingSession(
                     resizeHintSeen = layout.resizeHintSeen,
                 ),
             record = false,
-            edited = true,
         )
     }
 
     fun leave(complete: Boolean, destination: (Page) -> Unit) {
         flushInput()
         if (locked) return
+        if (!complete) {
+            discardImports()
+            destination(initial)
+            return
+        }
         locked = true
-        ++revision
-        val final =
-            page.copy(
-                draft = if (complete) false else page.draft,
-                notebookLayout = persistedLayout().encode(),
-            )
-        val save = book.persist(final)
+        val final = page.copy(draft = false, notebookLayout = persistedLayout().encode())
+        val finalPlaces = places
+        val retainedFiles = final.files().toSet() + finalPlaces.flatMap { it.media.lines() }
+        val removedFiles = (initial.files().toSet() + imported) - retainedFiles
+        val save = CompletableDeferred<Unit>()
+        book.queue {
+            try {
+                book.db.withTransaction {
+                    book.dao.save(final)
+                    initialPlaces.filter { previous -> finalPlaces.none { it.id == previous.id } }
+                        .forEach { book.dao.removeLocation(final.id, it.id) }
+                    finalPlaces.forEach { book.dao.writeLocation(it) }
+                }
+                removedFiles.forEach { runCatching { File(mediaDir(book), it).delete() } }
+                save.complete(Unit)
+            } catch (e: Exception) {
+                save.completeExceptionally(e)
+            }
+        }
         status = "Saving…"
         scope.launch {
             try {
                 save.await()
+                imported.clear()
                 page = final
+                completedPage = final
+                status = "Saved"
                 destination(final)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -219,6 +251,24 @@ internal class WritingSession(
             }
         }
     }
+}
+
+internal class WritingEditorModel : ViewModel() {
+    var session: WritingSession? = null
+        private set
+
+    fun open(page: Page, book: Notebook, prefs: Map<String, String>, places: List<DiaryLocation>): WritingSession {
+        session?.takeIf { it.initial.id == page.id && it.book === book }?.let { return it }
+        clear()
+        return WritingSession(page, book, viewModelScope, prefs, places).also { session = it }
+    }
+
+    fun clear() {
+        session?.takeUnless { it.locked }?.discardImports()
+        session = null
+    }
+
+    override fun onCleared() = clear()
 }
 
 private val toolNames =
@@ -252,7 +302,19 @@ internal fun DiaryEditor(
     close: (Page) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val session = remember(initial.id) { WritingSession(initial, book, scope, prefs) }
+    val host = LocalActivity.current as androidx.activity.ComponentActivity
+    val model = remember(host) { ViewModelProvider(host)[WritingEditorModel::class.java] }
+    val session = remember(initial.id, book) {
+        model.open(initial, book, prefs, locations.filter { it.pageId == initial.id })
+    }
+    fun exit(saved: Page) {
+        model.clear()
+        close(saved)
+    }
+    val onExit by rememberUpdatedState<(Page) -> Unit>(::exit)
+    LaunchedEffect(session.completedPage) {
+        session.completedPage?.let(onExit)
+    }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(session, lifecycle) {
         val observer =
@@ -270,11 +332,11 @@ internal fun DiaryEditor(
     val art = session.layout
     val savingLabel =
         when (session.status) {
-            "Draft saved" -> wording("✓ Draft saved", "✓ 임시저장됨")
-            "Saved" -> wording("✓ Saved", "✓ 저장됨")
+            "Saved" -> if (session.hasUnsavedChanges || page.draft)
+                wording("Unsaved", "저장되지 않음") else wording("✓ Saved", "✓ 저장됨")
             "Saving…" -> wording("Saving…", "저장 중…")
             "Save failed" -> wording("Save failed", "저장 실패")
-            else -> wording("Draft", "초안")
+            else -> ""
         }
     var panel by remember { mutableStateOf("") }
     var dialog by rememberSaveable { mutableStateOf("") }
@@ -285,10 +347,15 @@ internal fun DiaryEditor(
     var textPages by remember { mutableIntStateOf(1) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
-    fun leave(complete: Boolean = false, dest: (Page) -> Unit = close) {
+    var confirmExit by remember { mutableStateOf<((Page) -> Unit)?>(null) }
+    fun leave(complete: Boolean = false, dest: (Page) -> Unit = ::exit) {
+        if (session.locked) return
         keyboard?.hide()
         focus.clearFocus()
-        session.leave(complete, dest)
+        session.flushInput()
+        if (complete) session.leave(true) {}
+        else if (session.hasUnsavedChanges) confirmExit = dest
+        else session.leave(false, dest)
     }
     BackHandler { if (panel.isNotBlank()) panel = "" else leave() }
     fun mode(name: String) {
@@ -312,6 +379,7 @@ internal fun DiaryEditor(
                     session.locked = true
                     val resolver = book.context.contentResolver
                     val sheet = session.layout.sheet
+                    var copied: File? = null
                     try {
                         val file =
                             withContext(Dispatchers.IO) {
@@ -323,6 +391,7 @@ internal fun DiaryEditor(
                                                 ".video"
                                             else ".photo",
                                     )
+                                copied = dest
                                 try {
                                     requireNotNull(resolver.openInputStream(uri)).use { input ->
                                         dest.outputStream().use { input.copyTo(it) }
@@ -334,6 +403,7 @@ internal fun DiaryEditor(
                                 }
                             }
                         session.locked = false
+                        session.trackImport(file.name)
                         val layout = session.layout
                         session.update(
                             session.page.copy(
@@ -348,6 +418,7 @@ internal fun DiaryEditor(
                         selected = file.name
                         hintedPrint = if (layout.resizeHintSeen) null else file.name
                     } catch (e: Exception) {
+                        copied?.delete()
                         if (e is CancellationException) throw e
                         session.error = "Couldn’t import the attachment."
                     } finally {
@@ -368,7 +439,7 @@ internal fun DiaryEditor(
             session.turnTo(((index / session.span - 1) * session.span).coerceAtLeast(0))
         } else {
             val linked =
-                locations.filter { it.pageId == page.id }.flatMap { it.media.lines() }.toSet()
+                session.places.flatMap { it.media.lines() }.toSet()
             val (next, layout) = removeSheet(request.page, current, request.slices, index, linked)
             session.textGeneration++
             session.update(next, layout)
@@ -454,7 +525,7 @@ internal fun DiaryEditor(
                     .padding(horizontal = 9.dp, vertical = 3.dp)
                     .clip(round)
                     .border(1.dp, edge, round)
-                    .background(Color(0xfffaf5ed))
+                    .background(notebookBackground)
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -505,7 +576,7 @@ internal fun DiaryEditor(
                         DropdownMenu(
                             panel == name,
                             { panel = "" },
-                            containerColor = ivory,
+                            containerColor = notebookBackground,
                             modifier = Modifier.widthIn(max = 320.dp),
                         ) {
                             when (name) {
@@ -766,7 +837,7 @@ internal fun DiaryEditor(
             }
         }
     }
-    Column(Modifier.fillMaxSize().background(ivory)) {
+    Column(Modifier.fillMaxSize().background(notebookBackground)) {
         EditorControls(header, tools)
         WritingSpread(
             session,
@@ -785,14 +856,14 @@ internal fun DiaryEditor(
     if (menu) {
         AlertDialog(
             onDismissRequest = { menu = false },
-            containerColor = ivory,
+            containerColor = notebookBackground,
             title = { Title(wording("Navigate", "이동")) },
             text = {
                 Column {
                     tabs.forEach { (tab, _) ->
                         TextButton(onClick = {
                             menu = false
-                            leave { if (tab == "Diaries") close(it) else navigate(tab) }
+                            leave { if (tab == "Diaries") exit(it) else { model.clear(); navigate(tab) } }
                         }) { Text(tab) }
                     }
                 }
@@ -800,12 +871,28 @@ internal fun DiaryEditor(
             confirmButton = { TextButton(onClick = { menu = false }) { Text(wording("Close", "닫기")) } },
         )
     }
+    confirmExit?.let { destination ->
+        AlertDialog(
+            onDismissRequest = { confirmExit = null },
+            title = { Text(wording("Discard unsaved changes?", "저장하지 않은 변경사항을 버릴까요?")) },
+            text = { Text(wording("Choose Done in the editor to save this diary entry.", "일기를 저장하려면 편집 화면에서 완료를 누르세요.")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmExit = null
+                    session.leave(false, destination)
+                }) { Text(wording("Discard", "버리기")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmExit = null }) { Text(wording("Keep editing", "계속 편집")) }
+            },
+        )
+    }
     val requested = deletion
     if (requested != null) {
         val index = requested.index
         AlertDialog(
             onDismissRequest = { deletion = null },
-            containerColor = ivory,
+            containerColor = notebookBackground,
             title = { Text(wording("Delete page ${index+1}?", "${index+1}쪽을 삭제할까요?")) },
             text = {
                 Text(
@@ -826,7 +913,7 @@ internal fun DiaryEditor(
         val index = art.sheet
         AlertDialog(
             onDismissRequest = { dialog = "" },
-            containerColor = ivory,
+            containerColor = notebookBackground,
             title = {
                 Text(wording("Clear handwriting on page ${index+1}?", "${index+1}쪽의 필기를 모두 지울까요?"))
             },
@@ -850,12 +937,15 @@ internal fun DiaryEditor(
         LocationNotebook(
             page.copy(notebookLayout = session.persistedLayout().encode()),
             book,
-            locations.filter { it.pageId == page.id },
+            session.places,
+            session::addPlace,
+            session::movePlace,
+            session::removePlace,
         ) {
             dialog = ""
         }
     else if (dialog.isNotEmpty())
-        EditorDialog(dialog, session, chapters, prefs, { dialog = "" }, close)
+        EditorDialog(dialog, session, chapters, prefs, { dialog = "" }, ::exit)
     if (viewing.isNotEmpty())
         AttachmentPreview(session, viewing) {
             viewing = ""

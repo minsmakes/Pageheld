@@ -17,7 +17,7 @@ import kotlin.math.*
 internal object Binding {
     val cloth: Color @Composable get() = LocalNotebookPalette.current.cloth
     val board: Color @Composable get() = sage
-    val desk = Color(0xffe5e2d9)
+    val desk: Color @Composable get() = LocalNotebookPalette.current.desk
     val foil = Color(0xfff4ebcd)
     val ribbon = Color(0xffa78b72)
     val tabs =

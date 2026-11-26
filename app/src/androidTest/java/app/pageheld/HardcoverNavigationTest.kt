@@ -15,6 +15,14 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
+internal fun ActivityScenario<MainActivity>.writingSession(): WritingSession {
+    var session: WritingSession? = null
+    onActivity { host ->
+        session = androidx.lifecycle.ViewModelProvider(host)[WritingEditorModel::class.java].session
+    }
+    return checkNotNull(session)
+}
+
 class HardcoverNavigationTest {
     private val instrument = InstrumentationRegistry.getInstrumentation()
     private val automation
@@ -180,6 +188,21 @@ class HardcoverNavigationTest {
                 assertTrue(control.performAction(AccessibilityNodeInfo.ACTION_CLICK))
                 runBlocking { kotlinx.coroutines.withTimeout(5000) { book.settings.first { it["notebookTheme"] == target } } }
                 closeMenu()
+                automation.waitForIdle(250, 5000)
+                val y = bounds("Back to chapter").centerY()
+                val expected = NotebookPalette.entries.single { it.id == target }.background
+                val screenshot = requireNotNull(automation.takeScreenshot())
+                val actual = android.graphics.Color.rgb(
+                    kotlin.math.round(expected.red * 255).toInt(),
+                    kotlin.math.round(expected.green * 255).toInt(),
+                    kotlin.math.round(expected.blue * 255).toInt(),
+                )
+                try {
+                    assertTrue("The editor header uses the selected background",
+                        (0 until screenshot.width).any { screenshot.getPixel(it, y) == actual })
+                } finally {
+                    screenshot.recycle()
+                }
                 tap("More")
                 tap("Appearance")
                 assertTrue(node(target).isSelected || node(target).parent?.isSelected == true ||
@@ -231,25 +254,37 @@ class HardcoverNavigationTest {
                     node(page.title)
                     tap("Photo")
                     tap("Add photo or video")
-                    val saved = runBlocking {
+                    val session = scenario.writingSession()
+                    return runBlocking {
                         kotlinx.coroutines.withTimeout(5000) {
-                            book.dao.pages().first { pages -> pages.any { it.id == page.id && it.files().size == count } }
-                                .single { it.id == page.id }
+                            snapshotFlow { session.page.copy(notebookLayout = session.layout.encode()) }
+                                .first { it.files().size == count }
+                        }.also { current ->
+                            imported.addAll(current.files())
+                            assertTrue(DiaryLayout.read(current).resizeHintSeen)
                         }
                     }
-                    imported.addAll(saved.files())
-                    assertTrue(DiaryLayout.read(saved).resizeHintSeen)
-                    return saved
                 }
                 open(first)
-                val saved = attach(first, 1)
+                attach(first, 1)
                 node(hint)
                 val timeout = SystemClock.uptimeMillis() + 8000
                 while (find(hint) != null && SystemClock.uptimeMillis() < timeout) SystemClock.sleep(100)
                 assertNull(find(hint))
+                tap("Done")
+                val saved = runBlocking {
+                    kotlinx.coroutines.withTimeout(5000) { book.dao.pages().first { it.any { page -> page.id == first.id } }.single() }
+                }
                 open(second)
                 attach(second, 1)
                 node(hint)
+                tap("Back to chapter")
+                node("Discard unsaved changes?")
+                tap("Keep editing")
+                assertTrue(scenario.writingSession().page.files().isNotEmpty())
+                tap("Back to chapter")
+                tap("Discard")
+                assertNull(runBlocking { book.dao.page(second.id) })
                 open(saved)
                 attach(first, 2)
                 assertNull(find(hint))
@@ -269,12 +304,11 @@ class HardcoverNavigationTest {
         val seed =
             Page(body = "On the first sheet", notebookLayout = DiaryLayout(mode = "Pen").encode())
         runBlocking { book.dao.save(seed) }
+        lateinit var editor: WritingSession
         fun awaitPage(predicate: (DiaryLayout) -> Boolean): DiaryLayout = runBlocking {
             kotlinx.coroutines.withTimeoutOrNull(8000) {
-                DiaryLayout.read(
-                    book.dao.pages().first { predicate(DiaryLayout.read(it.single())) }.single()
-                )
-            } ?: DiaryLayout.read(book.dao.pages().first().single()).let {
+                snapshotFlow { editor.layout }.first(predicate)
+            } ?: editor.layout.let {
                 error("Timed out on sheet ${it.sheet}, mode ${it.mode}, ${it.lines.size} strokes")
             }
         }
@@ -297,6 +331,7 @@ class HardcoverNavigationTest {
                     }
                 }
                 val back = bounds("Back to chapter")
+                editor = scenario.writingSession()
                 val more = find("More")
                 val pen = bounds("Pen")
                 val paperBounds = bounds("Ink page 1")
@@ -430,24 +465,11 @@ class HardcoverNavigationTest {
             }
             bitmap.recycle()
         }
-        fun saved(match: (Page) -> Boolean): Page = runBlocking {
-            kotlinx.coroutines.withTimeoutOrNull(8000) {
-                book.dao.pages().first { it.any(match) }.first(match)
+        lateinit var editor: WritingSession
+        fun working(match: (Page) -> Boolean): Page = runBlocking {
+            kotlinx.coroutines.withTimeout(8000) {
+                snapshotFlow { editor.page.copy(notebookLayout = editor.layout.encode()) }.first(match)
             }
-                ?: error(
-                    "Entry check failed: " +
-                        book.dao.pages().first().map {
-                            listOf(
-                                it.body.length,
-                                it.body.contains("Revised"),
-                                it.body.lines().filter { line ->
-                                    line.isNotEmpty() && line != "한글과 English. A long afternoon of writing."
-                                }.take(3),
-                                DiaryLayout.read(it).sheet,
-                                it.draft,
-                            )
-                        }
-                )
         }
         fun closePopup() {
             automation.performGlobalAction(
@@ -526,11 +548,12 @@ class HardcoverNavigationTest {
                 tap("Today")
                 tap(original.title)
                 node("Done")
+                editor = activity.writingSession()
                 capture("typed")
                 val image = find("Photograph on page 2")
                 if (image != null) {
                     tap("Photograph on page 2")
-                    saved { it.id == original.id && DiaryLayout.read(it).mode == "Photo" }
+                    working { it.id == original.id && DiaryLayout.read(it).mode == "Photo" }
                     capture("photo")
                     tap("Type")
                 }
@@ -546,15 +569,15 @@ class HardcoverNavigationTest {
                     (0..16).map { i -> x + i * 4 to y + 14 * kotlin.math.sin(i * .45).toFloat() },
                     stylus = true,
                 )
-                saved { DiaryLayout.read(it).lines.isNotEmpty() }
+                working { DiaryLayout.read(it).lines.isNotEmpty() }
                 capture("handwriting")
                 tap("Undo")
-                saved { it.id == original.id && DiaryLayout.read(it).lines.isEmpty() }
+                working { it.id == original.id && DiaryLayout.read(it).lines.isEmpty() }
                 tap("Redo")
-                saved { DiaryLayout.read(it).lines.isNotEmpty() }
+                working { DiaryLayout.read(it).lines.isNotEmpty() }
                 tap("Eraser")
                 stroke(listOf(x to y, (x + 24) to y))
-                saved { DiaryLayout.read(it).lines.isEmpty() }
+                working { DiaryLayout.read(it).lines.isEmpty() }
                 tap("Mood")
                 node("Joyful")
                 capture("mood")
@@ -627,7 +650,7 @@ class HardcoverNavigationTest {
                 }
                 key(android.view.KeyEvent.KEYCODE_A, android.view.KeyEvent.META_CTRL_ON)
                 key(android.view.KeyEvent.KEYCODE_V, android.view.KeyEvent.META_CTRL_ON)
-                saved { it.body == words && it.draft && DiaryLayout.read(it).sheet >= 2 }
+                working { it.body == words && DiaryLayout.read(it).sheet >= 2 }
                 activity.onActivity { host ->
                     host
                         .getSystemService(android.view.inputmethod.InputMethodManager::class.java)
@@ -638,7 +661,7 @@ class HardcoverNavigationTest {
                 ) // Allow Android’s clipboard preview to leave the edge controls.
                 node("Done")
                 capture("continuous")
-                val before = DiaryLayout.read(saved { it.body == words }).sheet
+                val before = DiaryLayout.read(working { it.body == words }).sheet
                 if (find("Previous pages") != null) {
                     var arrow: AccessibilityNodeInfo? = node("Previous pages")
                     while (arrow != null && !arrow.isClickable) arrow = arrow.parent
@@ -648,7 +671,7 @@ class HardcoverNavigationTest {
                     )
                     SystemClock.sleep(120)
                     // The button turn settles before the following controlled finger drag.
-                    saved { it.id == original.id && DiaryLayout.read(it).sheet < before }
+                    working { it.id == original.id && DiaryLayout.read(it).sheet < before }
                     capture("page-turn")
                     val fraction = find("5 / 8")
                     if (fraction != null) {
@@ -660,7 +683,7 @@ class HardcoverNavigationTest {
                         closePopup()
                     }
                 }
-                val spreadBeforeDrag = DiaryLayout.read(saved { it.id == original.id }).sheet
+                val spreadBeforeDrag = DiaryLayout.read(working { it.id == original.id }).sheet
                 if (spreadBeforeDrag >= 2) {
                     SystemClock.sleep(650)
                     val inputBounds = bounds("Writing page ${spreadBeforeDrag+1}")
@@ -674,19 +697,19 @@ class HardcoverNavigationTest {
                             capture("fold", settle = false)
                         }
                     }
-                    saved { it.id == original.id && DiaryLayout.read(it).sheet > spreadBeforeDrag }
+                    working { it.id == original.id && DiaryLayout.read(it).sheet > spreadBeforeDrag }
                     var previous: AccessibilityNodeInfo? = node("Previous pages")
                     while (previous != null && !previous.isClickable) previous = previous.parent
                     assertTrue(previous?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
-                    saved { it.id == original.id && DiaryLayout.read(it).sheet == spreadBeforeDrag }
+                    working { it.id == original.id && DiaryLayout.read(it).sheet == spreadBeforeDrag }
                 }
-                val activeBodyIndex = DiaryLayout.read(saved { it.id == original.id }).sheet
+                val activeBodyIndex = DiaryLayout.read(working { it.id == original.id }).sheet
                 val writable = bounds("Writing page ${activeBodyIndex+1}")
                 val editPoint = writable.exactCenterX() to (writable.top + 16f)
                 stroke(listOf(editPoint, editPoint))
                 SystemClock.sleep(400)
                 instrument.sendStringSync("Revised ")
-                saved { it.id == original.id && "Revised" in it.body }
+                working { it.id == original.id && "Revised" in it.body }
                 activity.onActivity {
                     it.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
                         .hideSoftInputFromWindow(it.window.decorView.windowToken, 0)
@@ -694,18 +717,19 @@ class HardcoverNavigationTest {
                 SystemClock.sleep(400)
                 tap("More")
                 tap("Add page")
-                saved { '\u000c' in it.body }
+                working { '\u000c' in it.body }
                 automation.waitForIdle(300, 4000)
                 assertNull(find("Navigate"))
-                tap("More")
-                tap("Navigate")
-                tap("Today")
-                node("Diaries")
-                tap("Diaries")
-                node("Done")
+                assertEquals(original.body, runBlocking { book.dao.page(original.id)?.body })
                 tap("Done")
                 node("Chapter index")
-                val finished = saved { it.id == original.id && !it.draft && "Revised" in it.body }
+                val finished = runBlocking {
+                    kotlinx.coroutines.withTimeout(8000) {
+                        book.dao.pages().first { entries ->
+                            entries.any { it.id == original.id && !it.draft && "Revised" in it.body }
+                        }.single { it.id == original.id }
+                    }
+                }
                 assertEquals(words, finished.body.replace("Revised ", "").trimEnd(12.toChar()))
                 assertEquals(original.id, finished.id)
                 assertEquals("Joyful", finished.mood)

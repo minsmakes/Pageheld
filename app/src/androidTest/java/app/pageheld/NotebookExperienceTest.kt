@@ -19,7 +19,6 @@ import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -67,6 +66,7 @@ class NotebookExperienceTest {
                     DiaryLocation(pageId = page.id, position = 0, name = "Park", media = photo.name),
                 )
             }
+            val locations = runBlocking { book.dao.locationsFor(page.id) }
             ActivityScenario.launch(MainActivity::class.java).use { activity ->
                 activity.onActivity { host ->
                     host.setContent {
@@ -76,7 +76,7 @@ class NotebookExperienceTest {
                                     page,
                                     book,
                                     emptyList(),
-                                    emptyList(),
+                                    locations,
                                     emptyMap(),
                                     false,
                                     "",
@@ -163,21 +163,13 @@ class NotebookExperienceTest {
                     SystemClock.sleep(30)
                 }
                 touch(MotionEvent.ACTION_UP, 5)
+                val editor = activity.writingSession()
                 val saved = runBlocking {
-                    withTimeoutOrNull(5_000) {
-                        book.dao
-                            .pages()
-                            .first {
-                                it.any { page ->
-                                    DiaryLayout.read(page).prints[photo.name]?.x != .15f
-                                }
-                            }
-                            .single()
-                            .let { DiaryLayout.read(it).prints.getValue(photo.name) }
+                    kotlinx.coroutines.withTimeout(5000) {
+                        androidx.compose.runtime.snapshotFlow { editor.layout.prints.getValue(photo.name) }
+                            .first { it.x > .15f }
                     }
                 }
-                assertNotNull("Photo drag did not persist at $bounds", saved)
-                assertTrue(saved!!.x > .15f)
                 automation.waitForIdle(250, 5000)
                 assertFalse(hint in texts(automation.rootInActiveWindow))
 
@@ -254,37 +246,16 @@ class NotebookExperienceTest {
                     )
                 }
                 pinch(true)
-                val enlarged = runBlocking {
-                    withTimeoutOrNull(5000) {
-                        book.dao.pages().first {
-                            DiaryLayout.read(it.single()).prints.getValue(photo.name).width >
-                                saved.width + .02f
-                        }
+                fun widthAfter(predicate: (Float) -> Boolean) = runBlocking {
+                    kotlinx.coroutines.withTimeout(5000) {
+                        androidx.compose.runtime.snapshotFlow { editor.layout.prints.getValue(photo.name).width }
+                            .first(predicate)
                     }
                 }
-                assertNotNull("Outward pinch enlarges the photograph", enlarged)
-                val big = DiaryLayout.read(enlarged!!.single()).prints.getValue(photo.name).width
+                val big = widthAfter { it > saved.width + .02f }
                 pinch(false)
-                assertNotNull(
-                    runBlocking {
-                        withTimeoutOrNull(5000) {
-                            book.dao.pages().first {
-                                DiaryLayout.read(it.single()).prints.getValue(photo.name).width <
-                                    big - .02f
-                            }
-                        }
-                    }
-                )
+                widthAfter { it < big - .02f }
 
-                fun tap(bounds: Rect) {
-                    automation
-                        .executeShellCommand("input tap ${bounds.centerX()} ${bounds.centerY()}")
-                        .use { descriptor ->
-                            android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor)
-                                .readBytes()
-                        }
-                    automation.waitForIdle(250, 5000)
-                }
                 fun tapLabel(label: String) {
                     fun find(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
                         if (node == null || node.text?.toString() == label) return node
@@ -316,13 +287,22 @@ class NotebookExperienceTest {
                 tapLabel("View attachment")
                 tapLabel("Remove attachment")
                 tapLabel("Remove")
+                assertTrue(editor.page.files().isEmpty())
+                assertTrue(photo.exists())
+                assertEquals(photo.name, runBlocking { book.dao.locationsFor(page.id).single().media })
+                tapLabel("Weather")
+                tapLabel("Rainy")
+                assertEquals("Rainy", editor.page.weather)
+                tapLabel("Weather")
+                tapLabel("Clear")
+                assertTrue(editor.page.weather.isEmpty())
+                tapLabel("Done")
                 val updated = runBlocking {
-                    withTimeoutOrNull(5_000) {
+                    kotlinx.coroutines.withTimeout(5000) {
                         book.dao.pages().first { it.single().files().isEmpty() }.single()
                     }
                 }
-                assertNotNull("Confirmed removal did not persist", updated)
-                assertEquals(page.body, updated!!.body)
+                assertEquals(page.body, updated.body)
                 assertTrue(updated.mediaPositionsByFile().isEmpty())
                 assertEquals("", runBlocking { book.dao.locationsFor(page.id).single().media })
                 val deletionDeadline = SystemClock.elapsedRealtime() + 5000
@@ -330,26 +310,6 @@ class NotebookExperienceTest {
                     SystemClock.sleep(50)
                 }
                 assertFalse(photo.exists())
-                tapLabel("Weather")
-                tapLabel("Rainy")
-                runBlocking {
-                    assertNotNull(
-                        "Rainy weather did not persist",
-                        withTimeoutOrNull(5_000) {
-                            book.dao.pages().first { it.single().weather == "Rainy" }
-                        },
-                    )
-                }
-                tapLabel("Weather")
-                tapLabel("Clear")
-                runBlocking {
-                    assertNotNull(
-                        "Cleared weather did not persist",
-                        withTimeoutOrNull(5_000) {
-                            book.dao.pages().first { it.single().weather.isEmpty() }
-                        },
-                    )
-                }
             }
         } finally {
             photo.delete()

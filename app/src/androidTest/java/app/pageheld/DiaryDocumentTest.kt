@@ -155,7 +155,7 @@ class DiaryDocumentTest {
     }
 
     @Test
-    fun failedWriteRetainsDraftAndDoneCanRetry() = runBlocking {
+    fun editsStayInMemoryAndDoneCanRetry() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         Room.inMemoryDatabaseBuilder(context, NotebookDb::class.java).build().useDatabase { db ->
             val book = Notebook(context, db)
@@ -166,9 +166,9 @@ class DiaryDocumentTest {
             )
             val editor = WritingSession(initial, book, this)
             editor.update(initial.copy(body = "Keep this edit"))
-            kotlinx.coroutines.withTimeout(5000) {
-                while (editor.status != "Save failed") kotlinx.coroutines.delay(20)
-            }
+            editor.addPlace(DiaryLocation(pageId = initial.id, position = 0, name = "Park"))
+            assertTrue(db.journal().locationsFor(initial.id).isEmpty())
+            assertTrue(editor.hasUnsavedChanges)
             assertEquals("Old text", db.journal().pages().first().single().body)
             assertEquals("Keep this edit", editor.page.body)
             var completed = false
@@ -183,6 +183,7 @@ class DiaryDocumentTest {
                 while (editor.locked) kotlinx.coroutines.delay(20)
             }
             assertTrue(completed)
+            assertEquals("Park", db.journal().locationsFor(initial.id).single().name)
             assertEquals("Keep this edit", db.journal().pages().first().single().body)
             assertFalse(db.journal().pages().first().single().draft)
         }

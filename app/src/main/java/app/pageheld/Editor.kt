@@ -300,8 +300,9 @@ internal fun EditorDialog(
                             val result = kotlinx.coroutines.CompletableDeferred<Unit>()
                             session.book.queue {
                                 try {
+                                    val saved = session.book.dao.page(page.id)
                                     session.book.dao.removePage(page.id)
-                                    page.files().forEach {
+                                    saved?.files().orEmpty().forEach {
                                         File(mediaDir(session.book), it).delete()
                                     }
                                     result.complete(Unit)
@@ -313,6 +314,7 @@ internal fun EditorDialog(
                                 try {
                                     result.await()
                                     dismiss()
+                                    session.discardImports()
                                     close(page)
                                 } catch (e: Exception) {
                                     session.error = "Couldn’t delete this entry."
@@ -336,7 +338,6 @@ internal fun EditorDialog(
 internal fun AttachmentPreview(session: WritingSession, name: String, dismiss: () -> Unit) {
     val file = File(mediaDir(session.book), name)
     var removing by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
     Dialog(onDismissRequest = dismiss) {
         Column(Modifier.background(ivory, round).padding(12.dp)) {
             MediaMount(Modifier.fillMaxWidth().heightIn(max = 360.dp).fillMaxHeight(.55f)) {
@@ -372,40 +373,8 @@ internal fun AttachmentPreview(session: WritingSession, name: String, dismiss: (
                 TextButton(
                     enabled = !session.locked,
                     onClick = {
-                        session.locked = true
-                        val art = session.layout.copy(prints = session.layout.prints - name)
-                        val updated =
-                            session.page.copy(
-                                media =
-                                    session.page.files().filter { it != name }.joinToString("\n"),
-                                mediaPositions = session.page.withMediaPosition(name, null),
-                                notebookLayout = art.encode(),
-                                draft = true,
-                            )
-                        val result = CompletableDeferred<Unit>()
-                        session.book.queue {
-                            try {
-                                session.book.dao.saveAfterRemovingAttachment(updated, name)
-                                file.delete()
-                                result.complete(Unit)
-                            } catch (e: Exception) {
-                                result.completeExceptionally(e)
-                            }
-                        }
-                        scope.launch {
-                            try {
-                                result.await()
-                                session.locked = false
-                                session.past.clear()
-                                session.future.clear()
-                                session.update(updated, art, record = false)
-                                dismiss()
-                            } catch (e: Exception) {
-                                session.error = "Couldn’t remove the attachment."
-                            } finally {
-                                session.locked = false
-                            }
-                        }
+                        session.removeAttachment(name)
+                        dismiss()
                     },
                 ) {
                     Text("Remove")
