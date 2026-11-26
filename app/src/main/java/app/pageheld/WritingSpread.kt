@@ -59,7 +59,11 @@ internal fun WritingSpread(
     ) {
         val wide = maxWidth >= 580.dp
         val span = if (wide) 2 else 1
-        val inset = if (wide) 36.dp else 15.dp
+        val inset = if (wide) 20.dp else 8.dp
+        val trim = 4.dp
+        val verticalInset = 3.dp
+        val textTop = 20.dp
+        val textBottom = 36.dp
         val margin =
             when (prefs["margin"]) {
                 "Narrow" -> 16.dp
@@ -67,10 +71,12 @@ internal fun WritingSpread(
                 else -> if (wide) 28.dp else 18.dp
             }
         // Measure against the full sheet. Only the outer viewport consumes the IME inset.
-        val h = (maxHeight - 16.dp).coerceAtLeast(190.dp)
-        val w = (maxWidth - 2 * inset - 12.dp) / span
+        val bookHeight = maxHeight.coerceAtLeast(206.dp)
+        val sheetHeight = bookHeight - 2 * (verticalInset + trim)
+        val w = (maxWidth - 2 * (inset + trim)) / span
         val textWidth = with(density) { (w - 2 * margin).roundToPx().coerceAtLeast(40) }
-        val textHeight = with(density) { (h - 72.dp).roundToPx().coerceAtLeast(40) }
+        val textHeight =
+            with(density) { (sheetHeight - textTop - textBottom).roundToPx().coerceAtLeast(40) }
         val fit =
             remember(measurer, style, textWidth, textHeight) {
                 { text: String, start: Int, limit: Int ->
@@ -176,13 +182,13 @@ internal fun WritingSpread(
         ) {
             Box(
                 Modifier.fillMaxWidth()
-                    .height(h + 16.dp)
-                    .padding(horizontal = inset, vertical = 6.dp)
+                    .height(bookHeight)
+                    .padding(horizontal = inset, vertical = verticalInset)
             ) {
                 Stack(Modifier.fillMaxSize(), covered = false)
                 Box(
                     Modifier.fillMaxSize()
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                        .padding(trim)
                         .clip(if (wide) FoldedTrim else round)
                         .graphicsLayer {
                             scaleX = viewport.scale
@@ -271,8 +277,8 @@ internal fun WritingSpread(
                                             .padding(
                                                 start = margin,
                                                 end = margin,
-                                                top = 20.dp,
-                                                bottom = 36.dp,
+                                                top = textTop,
+                                                bottom = textBottom,
                                             )
                                     ) {
                                         if (raw.isEmpty() && index == 0 && art.mode == "Type")
@@ -575,7 +581,8 @@ private fun PhotoPrint(
     val onChoose by rememberUpdatedState(choose)
     val onCommit by rememberUpdatedState(commit)
     val onView by rememberUpdatedState(view)
-    var working by remember(position) { mutableStateOf(position) }
+    var preview by remember(file, position) { mutableStateOf<PrintPosition?>(null) }
+    val working = preview ?: position
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val pw = maxWidth
         val ph = maxHeight
@@ -595,22 +602,22 @@ private fun PhotoPrint(
                 .then(
                     if (!interactive) Modifier
                     else
-                        Modifier.pointerInput(pw, ph, ratio) {
+                        Modifier.pointerInput(pw, ph, ratio, position) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 down.consume()
                                 gesture(true)
                                 try {
-                                    var moved = false
                                     var elapsed = 0L
                                     do {
                                         val ev = awaitPointerEvent()
+                                        if (ev.cancelled(null)) return@awaitEachGesture
                                         val pan = ev.calculatePan()
                                         val zoom = ev.calculateZoom()
                                         elapsed =
                                             ev.changes.first().uptimeMillis - down.uptimeMillis
                                         if (pan != Offset.Zero || zoom != 1f) {
-                                            val old = working
+                                            val old = preview ?: position
                                             val before = widthFor(old)
                                             val after =
                                                 minOf(
@@ -620,15 +627,18 @@ private fun PhotoPrint(
                                                 )
                                             val bh = (before - border) / ratio + foot
                                             val ah = (after - border) / ratio + foot
+                                            val anchor = ev.calculateCentroid(useCurrent = false)
+                                            val fx = (anchor.x / before.toPx()).coerceIn(0f, 1f)
+                                            val fy = (anchor.y / bh.toPx()).coerceIn(0f, 1f)
                                             val x =
                                                 (pw - before) * old.x +
-                                                    (before - after) / 2 +
+                                                    (before - after) * fx +
                                                     with(density) { pan.x.toDp() }
                                             val y =
                                                 (ph - bh) * old.y +
-                                                    (bh - ah) / 2 +
+                                                    (bh - ah) * fy +
                                                     with(density) { pan.y.toDp() }
-                                            working =
+                                            preview =
                                                 old.copy(
                                                     width = after / pw,
                                                     x =
@@ -640,13 +650,14 @@ private fun PhotoPrint(
                                                             (y / (ph - ah)).coerceIn(0f, 1f)
                                                         else 0f,
                                                 )
-                                            moved = true
                                         }
                                         ev.changes.forEach { it.consume() }
                                     } while (ev.changes.any { it.pressed })
                                     onChoose()
-                                    if (moved) onCommit(working) else if (elapsed > 500) onView()
+                                    val final = preview
+                                    if (final != null) onCommit(final) else if (elapsed > 500) onView()
                                 } finally {
+                                    preview = null
                                     gesture(false)
                                 }
                             }

@@ -108,6 +108,16 @@ class DiaryDocumentTest {
     }
 
     @Test
+    fun stylusPressureTracksContactWithoutThickeningAtLiftOff() {
+        val tip = StylusPressure()
+        assertEquals(.2f, tip.sample(.2f, 100), .0001f)
+        val moving = tip.sample(.8f, 105)
+        assertTrue(moving > .2f && moving < .8f)
+        assertEquals(moving, tip.sample(0f, 110), 0f)
+        assertEquals(.8f, tip.sample(.8f, 200), .001f)
+    }
+
+    @Test
     fun penPresetsAndWeatherAssetsAreDistinctAndRoundTrip() {
         val pen = DiaryPen(4, 0xff645b47.toInt(), 4f, .55f, .75f)
         assertEquals(pen, DiaryPen.parse(pen.token()))

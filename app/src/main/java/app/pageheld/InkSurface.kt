@@ -2,7 +2,6 @@ package app.pageheld
 
 import android.view.MotionEvent
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,6 +48,16 @@ private fun bounds(lines: List<InkLine>, frame: InkFrame): Rect? {
     return box
 }
 
+// A resting palm may stay down across several pen strokes. Keep listening for a
+// fresh tip contact without waiting for every other pointer to lift.
+private suspend fun PointerInputScope.trackInkContacts(
+    handle: suspend AwaitPointerEventScope.(PointerEvent) -> Unit
+) {
+    awaitPointerEventScope {
+        while (true) handle(awaitPointerEvent())
+    }
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolean, zoom: Float) {
@@ -74,7 +83,7 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
     val selection = chosen.filter { item -> art.lines.any { it === item } }
     val selectedBounds = remember(selection, frame) { bounds(selection, frame) }
     val cache = remember(frame) { IdentityHashMap<InkLine, InkShape>() }
-    val radius = art.eraserSize * density / (2 * zoom)
+    var eraserRadius by remember { mutableFloatStateOf(0f) }
     val updatedZoom by rememberUpdatedState(zoom)
     fun changeSelection(replacement: List<InkLine>, duplicate: Boolean = false) {
         val lines = session.layout.lines
@@ -107,27 +116,23 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                     if (!enabled) Modifier
                     else
                         Modifier.pointerInput(sheet, art.mode, frame, session.fingerInk) {
-                            awaitEachGesture {
-                                var down = awaitFirstDown(requireUnconsumed = false)
-                                var event = currentEvent
+                            trackInkContacts { first ->
+                                var event = first
                                 val mode = session.layout.mode
-                                fun allowed(p: PointerInputChange) =
-                                    p.type.isPen() ||
-                                        (p.type == PointerType.Touch &&
+                                val down =
+                                    event.changes.firstOrNull {
+                                        it.type.isPen() && it.changedToDownIgnoreConsumed()
+                                    } ?: event.changes.singleOrNull()?.takeIf {
+                                        it.type == PointerType.Touch &&
+                                            it.changedToDownIgnoreConsumed() &&
                                             (mode != "Pen" || session.fingerInk) &&
-                                            !session.broadContact(density))
-                                while (!allowed(down)) {
-                                    if (!event.changes.any { it.pressed }) return@awaitEachGesture
-                                    event = awaitPointerEvent()
-                                    down =
-                                        event.changes.firstOrNull { it.pressed && it.type.isPen() }
-                                            ?: down
-                                }
+                                            !session.broadContact(density)
+                                    } ?: return@trackInkContacts
                                 if (down.type.isPen()) session.fingerOwner?.invoke()
                                 if (
                                     session.locked || down.isConsumed || session.finishInput != null
                                 )
-                                    return@awaitEachGesture
+                                    return@trackInkContacts
                                 val settings = session.layout
                                 val pen = settings.pen()
                                 val boundsCache = EraserBounds(frame)
@@ -139,6 +144,7 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                                 var previousErase = false
                                 var pointer = down.id
                                 var stylus = down.type.isPen()
+                                val tipPressure = StylusPressure()
                                 val selectionNow = chosen.filter { l -> original.any { it === l } }
                                 val moving =
                                     mode == "Lasso" &&
@@ -195,12 +201,14 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                                     pressure: Float,
                                     tilt: Float,
                                     erase: Boolean,
+                                    time: Long,
                                 ) {
                                     val location =
                                         Offset(
                                             pos.x.coerceIn(0f, size.width.toFloat()),
                                             pos.y.coerceIn(0f, size.height.toFloat()),
                                         )
+                                    val force = if (stylus) tipPressure.sample(pressure, time) else 1f
                                     if (mode == "Lasso") {
                                         if (moving) {
                                             moved =
@@ -224,6 +232,10 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                                             last = null
                                         }
                                         eraser = location
+                                        val radius =
+                                            settings.eraserSize * density / (2 * updatedZoom) *
+                                                (.45f + .55f * force.coerceAtMost(1f))
+                                        eraserRadius = radius
                                         working =
                                             eraseInk(
                                                 working,
@@ -231,7 +243,7 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                                                 frame,
                                                 last ?: location,
                                                 location,
-                                                settings.eraserSize * density / (2 * updatedZoom),
+                                                radius,
                                                 settings.areaEraser,
                                                 boundsCache,
                                             )
@@ -247,7 +259,7 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                                                 frame,
                                                 frame.point(
                                                     location,
-                                                    pen.weight(pressure, tilt, direction),
+                                                    pen.weight(force, tilt, direction),
                                                 ),
                                                 density,
                                             )
@@ -275,6 +287,7 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                                             points = mutableListOf()
                                             trace.clear()
                                             last = null
+                                            previousErase = false
                                             pointer = penChange.id
                                             stylus = true
                                             session.fingerOwner = null
@@ -309,9 +322,14 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                                                             MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
                                         val tilt =
                                             native?.getAxisValue(MotionEvent.AXIS_TILT, ni) ?: 0f
-                                        for ((j, h) in p.historical.withIndex()) {
+                                        var j = 0
+                                        for (h in p.historical) {
+                                            // Compose may omit stationary historical positions.
+                                            while (native != null && j < native.historySize &&
+                                                native.getHistoricalEventTime(j) < h.uptimeMillis) j++
                                             val hasHistory =
-                                                native != null && j < native.historySize
+                                                native != null && j < native.historySize &&
+                                                    native.getHistoricalEventTime(j) == h.uptimeMillis
                                             sample(
                                                 h.position,
                                                 if (hasHistory && stylus)
@@ -325,14 +343,16 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
                                                     )
                                                 else tilt,
                                                 erase,
+                                                h.uptimeMillis,
                                             )
                                         }
                                         if (p.pressed || p.position != last)
                                             sample(
                                                 p.position,
-                                                if (stylus && p.pressure > 0f) p.pressure else 1f,
+                                                p.pressure,
                                                 tilt,
                                                 erase,
+                                                p.uptimeMillis,
                                             )
                                         p.consume()
                                         if (!p.pressed) {
@@ -354,7 +374,7 @@ internal fun InkSurface(sheet: Int, session: WritingSession, interactive: Boolea
             eraser?.let {
                 drawCircle(
                     ink.copy(alpha = .48f),
-                    radius,
+                    eraserRadius,
                     it,
                     style = Stroke(1.dp.toPx() / updatedZoom),
                 )

@@ -7,7 +7,7 @@
   <a href="https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk"><img src="docs/readme/download-tablet.svg" alt="Download tablet edition"></a>
 </p>
 
-<p align="center">Source version 1.8 · Android 9 or newer</p>
+<p align="center">Source version 1.9 · Android 9 or newer</p>
 
 Pageheld is a personal journal for Android. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
 

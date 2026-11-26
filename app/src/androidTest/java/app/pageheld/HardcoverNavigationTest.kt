@@ -163,10 +163,12 @@ class HardcoverNavigationTest {
             Page(body = "On the first sheet", notebookLayout = DiaryLayout(mode = "Pen").encode())
         runBlocking { book.dao.save(seed) }
         fun awaitPage(predicate: (DiaryLayout) -> Boolean): DiaryLayout = runBlocking {
-            kotlinx.coroutines.withTimeout(8000) {
+            kotlinx.coroutines.withTimeoutOrNull(8000) {
                 DiaryLayout.read(
                     book.dao.pages().first { predicate(DiaryLayout.read(it.single())) }.single()
                 )
+            } ?: DiaryLayout.read(book.dao.pages().first().single()).let {
+                error("Timed out on sheet ${it.sheet}, mode ${it.mode}, ${it.lines.size} strokes")
             }
         }
         try {
@@ -208,13 +210,18 @@ class HardcoverNavigationTest {
                 val y = paper.top + paper.height() * .46f
                 val length = paper.width() * .48f
                 stroke((0..12).map { i -> x + length * i / 12 to y }, stylus = true)
-                awaitPage {
+                val drawn = awaitPage {
                     it.sheet == spread && it.lines.size == 1 && it.sheetIds.size >= spread + 1
-                }
+                }.lines.single().points
+                assertTrue("Increasing tip pressure should widen the stroke",
+                    drawn.last().pressure > drawn.first().pressure)
                 tap("Eraser")
                 tap("Eraser")
                 tap("Area eraser")
+                awaitPage { it.mode == "Eraser" && it.areaEraser }
                 closeMenu()
+                node("Ink page ${spread+1}")
+                automation.waitForIdle(200, 4000)
                 stroke(listOf(x + length / 2 to y - 35, x + length / 2 to y + 35), stylus = true)
                 awaitPage { it.lines.size == 2 }
                 tap("Undo")

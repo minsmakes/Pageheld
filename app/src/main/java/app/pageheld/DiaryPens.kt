@@ -59,13 +59,14 @@ internal data class DiaryPen(
     }
 
     fun weight(pressure: Float, tilt: Float, direction: Float): Float {
-        val p = 1f + (pressure.coerceIn(.04f, 1.5f) - 1f) * sensitivity
+        val p = 1f + (pressure.coerceIn(0f, 1.5f) - 1f) * sensitivity
+        val lean = sin(tilt.coerceIn(0f, (PI / 2).toFloat()))
         return when (nib) {
-            0 -> .65f + .35f * p
+            0 -> .35f + .65f * p
             1 -> (.45f + .8f * abs(sin(direction - .65f))) * (.25f + .95f * p)
-            2 -> .12f + 1.4f * p * p + .2f * sin(tilt)
+            2 -> .16f + 1.4f * p * sqrt(p) + .2f * lean
             3 -> 1f
-            else -> (.5f + .5f * p) * (1f + 1.8f * sin(tilt))
+            else -> (.24f + .80f * p) * (1f + 1.8f * lean)
         }
     }
 
@@ -82,6 +83,23 @@ internal data class DiaryPen(
                     )
                 }
                 .getOrNull()
+    }
+}
+
+// Filter pressure in time, leaving tip coordinates and their timestamps untouched.
+internal class StylusPressure {
+    private var lastTime = -1L
+    private var value = .5f
+
+    fun sample(raw: Float, time: Long): Float {
+        // Some digitizers report zero pressure at lift-off before the final tip position.
+        if (!raw.isFinite() || raw <= 0f) return value
+        val target = raw.coerceAtMost(1.5f)
+        val elapsed = (time - lastTime).coerceAtLeast(0L)
+        val blend = if (lastTime < 0) 1f else 1f - exp(-elapsed / 10f)
+        value += (target - value) * blend
+        lastTime = time
+        return value
     }
 }
 

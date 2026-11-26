@@ -182,6 +182,7 @@ class NotebookExperienceTest {
                 assertFalse(hint in texts(automation.rootInActiveWindow))
 
                 fun pinch(expand: Boolean) {
+                    if (android.os.Build.VERSION.SDK_INT >= 33) automation.clearCache()
                     val r = requireNotNull(photoBounds(automation.rootInActiveWindow))
                     val cx = r.exactCenterX()
                     val cy = r.exactCenterY()
@@ -237,6 +238,9 @@ class NotebookExperienceTest {
                         start,
                     )
                     for (i in 1..5) event(MotionEvent.ACTION_MOVE, 2, start + (end - start) * i / 5)
+                    automation.waitForIdle(100, 1500)
+                    if (android.os.Build.VERSION.SDK_INT >= 33) automation.clearCache()
+                    val live = requireNotNull(photoBounds(automation.rootInActiveWindow))
                     event(
                         MotionEvent.ACTION_POINTER_UP or
                             (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
@@ -244,6 +248,10 @@ class NotebookExperienceTest {
                         end,
                     )
                     event(MotionEvent.ACTION_UP, 1, end)
+                    assertTrue(
+                        "Print should resize before either finger lifts: $r -> $live",
+                        if (expand) live.width() > r.width() else live.width() < r.width(),
+                    )
                 }
                 pinch(true)
                 val enlarged = runBlocking {
