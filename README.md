@@ -7,11 +7,15 @@
   <a href="https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk"><img src="docs/readme/download-tablet.svg" alt="Download tablet edition"></a>
 </p>
 
-<p align="center">2.0 candidate source · Published downloads currently serve Pageheld 1.9.2 · Android 9 or newer</p>
+<p align="center"><a href="https://github.com/minsmakes/Pageheld/releases/download/v2.0-rc.1/Memospine-Tablet.apk"><strong>Download Memospine 2.0 tablet preview</strong></a></p>
+
+<p align="center">Stable downloads above serve Pageheld 1.9.2 · Android 9 or newer</p>
 
 Memospine (메모스파인) is a private Android library for personal journals &amp; memories. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
 
 ## Memospine 2.0 on tablets
+
+The signed tablet preview is available on GitHub. If you already use Pageheld, export an encrypted backup from **Profile** before installing. Open `Memospine-Tablet.apk` on your tablet and choose **Update** over your current installation. The preview uses the existing app identity and signing certificate. [Tablet preview release](https://github.com/minsmakes/Pageheld/releases/tag/v2.0-rc.1)
 
 Library holds nine books per shelf page. Select a book before opening Today or Moments. Entries and locations follow the selected book. Use **New Book** to create a cover, then open **Book Studio** to customize materials, lettering, photos and decorations. The phone edition continues to use the original single-notebook navigation.
 
@@ -29,7 +33,7 @@ These screenshots come from the running tablet candidate with a disposable journ
 
 [Today](docs/design/screenshots/v1.7/today.png) · [Diary cover](docs/design/screenshots/v1.7/cover.png) · [Chapter index](docs/design/screenshots/v1.7/chapters.png) · [Moments](docs/design/screenshots/v1.7/moments.png) · [Diary editor](docs/design/screenshots/v1.7/typed.png)
 
-## Install on your Android device
+## Install stable Pageheld on your Android device
 
 1. Choose **Download for phone** (Pageheld.apk) or **Download for tablet** (Pageheld-Tablet.apk). An APK is an Android app installer.
 2. Your browser may warn you about downloading an app file. Check that you followed the Pageheld link above before choosing **Download** or **Keep**.

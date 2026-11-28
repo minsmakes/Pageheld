@@ -1,6 +1,6 @@
 # Memospine. 2.0 release candidate
 
-Min's Makes • 28 November 2026 • Android 9 and later • phone and tablet • unpublished
+Min's Makes • 28 November 2026 • Android 9 and later • phone and tablet
 
 Both signed release installers use `app.pageheld`, version **2.0 (13)**. Pageheld 1.9.2 used version code 12, the highest found among the archived distributed APKs. Android accepted an in-place upgrade with a real journal entry. The tablet candidate runs on an emulator and has been compared with all three approved references. Visual differences and outstanding device checks keep the candidate below production acceptance.
 
@@ -87,4 +87,6 @@ A connected Galaxy Tab S8 Ultra contained an existing 1.9.2 installation. All ca
 
 **Remaining work** includes Korean accessibility and error copy in the new editing surfaces, end-to-end object rotation and stacking coverage, large or damaged source-photo fixtures, and storage-pressure testing. Some artwork descriptions and error messages in BookStudio.kt and PageDecorations.kt still use English when the system language is Korean.
 
-The official release and the remote v2.0 tag are withheld. Implementation milestones 32170f3, 3a76266 and 80503ba were pushed directly to origin/main. The repository had no Actions release workflow on these pushes. The two signed files above are for candidate review. The public download links continue to target the published Pageheld release. Brand and trademark clearance remains unconfirmed for publication.
+GitHub hosts the signed tablet candidate as a pre-release. The latest stable download remains Pageheld 1.9.2. The official v2.0 tag remains reserved for a build that passes release acceptance. Brand and trademark clearance remains unconfirmed. [Tablet preview release](https://github.com/minsmakes/Pageheld/releases/tag/v2.0-rc.1)
+
+Implementation milestones 32170f3, 3a76266 and 80503ba were pushed directly to origin/main. The repository had no Actions release workflow on these pushes.
