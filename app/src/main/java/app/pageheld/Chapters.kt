@@ -21,6 +21,7 @@ fun Chapters(
     select: (String?) -> Unit,
     open: (Page) -> Unit,
 ) {
+    val ownerId = LocalBook.current?.id ?: LEGACY_BOOK
     val current = chapters.find { it.id == selected }
     var dialog by rememberSaveable { mutableStateOf("") }
     var title by rememberSaveable { mutableStateOf("") }
@@ -148,7 +149,7 @@ fun Chapters(
                             val c =
                                 if (dialog == "Edit chapter" && current != null)
                                     current.copy(name = title.trim(), cover = cover)
-                                else Chapter(name = title.trim(), cover = cover)
+                                else Chapter(name = title.trim(), cover = cover, bookId = ownerId)
                             book.queue { book.dao.save(c) }
                         }
                         dialog = ""
@@ -232,7 +233,7 @@ fun You(book: Notebook, settings: Map<String, String>, showPlate: Boolean = true
             }
             BackupControls(book)
             Panel {
-                Title("Pageheld. v" + BuildConfig.VERSION_NAME, 20)
+                Title("Memospine. v" + BuildConfig.VERSION_NAME, 20)
                 Note("A personal journal for everyday writing and memories.")
                 Note("온글잎 몽몽데이즈몽글동심체 © 2022 VoyagerX and Song Sumin.")
             }

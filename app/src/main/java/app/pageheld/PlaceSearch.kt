@@ -88,7 +88,8 @@ internal fun PlaceSearch(
     select: (PlaceResult) -> Unit,
 ) {
     val ctx = LocalContext.current
-    val saved by remember(book) { book.dao.locations() }.collectAsState(emptyList())
+    val ownerId = LocalBook.current?.id ?: LEGACY_BOOK
+    val saved by remember(book,ownerId) { book.library.locations(ownerId) }.collectAsState(emptyList())
     var query by rememberSaveable { mutableStateOf("") }
     var matches by remember { mutableStateOf(emptyList<PlaceResult>()) }
     var status by remember { mutableStateOf("") }

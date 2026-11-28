@@ -40,9 +40,9 @@ internal fun writingSize(settings: Map<String, String>) =
 internal fun displaySize(settings: Map<String, String>) =
     settings["displaySize"]?.toIntOrNull()?.coerceIn(75, 125) ?: 100
 
-private fun Context.fontDirectory() = File(filesDir, "fonts")
+internal fun Context.fontDirectory() = File(filesDir, "fonts")
 
-private fun Context.importedFonts() = fontDirectory().listFiles().orEmpty()
+internal fun Context.importedFonts() = fontDirectory().listFiles().orEmpty()
     .filter { it.isFile && "--" in it.name && it.extension in listOf("ttf", "otf") }
     .sortedBy { it.name.substringAfter("--").lowercase() }
 

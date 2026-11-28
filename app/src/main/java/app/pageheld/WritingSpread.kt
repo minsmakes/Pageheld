@@ -58,11 +58,12 @@ internal fun WritingSpread(
     BoxWithConstraints(
         Modifier.fillMaxSize().motionEventSpy(session::observeInput).background(Binding.desk)
     ) {
+        val tabletBook = LocalTabletLibrary.current
         val wide = maxWidth >= 580.dp
         val span = if (wide) 2 else 1
         val inset = if (wide) 20.dp else 8.dp
-        val trim = 4.dp
-        val verticalInset = 3.dp
+        val trim = if(tabletBook) 12.dp else 4.dp
+        val verticalInset = if(tabletBook) 12.dp else 3.dp
         val textTop = 20.dp
         val textBottom = 36.dp
         val margin =
@@ -186,7 +187,8 @@ internal fun WritingSpread(
                     .height(bookHeight)
                     .padding(horizontal = inset, vertical = verticalInset)
             ) {
-                Stack(Modifier.fillMaxSize(), covered = false)
+                Stack(Modifier.fillMaxSize(), covered = tabletBook)
+                if(tabletBook) Stack(Modifier.fillMaxSize().padding(7.dp),covered=false)
                 Box(
                     Modifier.fillMaxSize()
                         .padding(trim)
@@ -458,7 +460,8 @@ internal fun WritingSpread(
                                             }
                                     }
                                     InkSurface(index, session, isCurrent, viewport.scale)
-                                    Text(
+                                    SheetDecorations(session,index,isCurrent && art.mode=="Decorate" && LocalTabletLibrary.current)
+                                    if(!LocalTabletLibrary.current) Text(
                                         "${index+1} / ${maxOf(total,(index/span+1)*span)}",
                                         Modifier.align(Alignment.BottomCenter)
                                             .clickable(onClickLabel = "Choose page") {
@@ -475,7 +478,7 @@ internal fun WritingSpread(
                 }
             }
         }
-        if (showResizeHint) {
+        if (showResizeHint && !LocalTabletLibrary.current) {
             Text(
                 wording("Pinch with two fingers to resize.", "두 손가락을 오므리거나 벌려 크기를 조절하세요."),
                 Modifier.align(Alignment.BottomCenter).padding(horizontal = 12.dp, vertical = 36.dp)
@@ -552,7 +555,7 @@ internal fun WritingSpread(
                             }
                     )
             }
-            listOf(-1, 1).forEach { sign ->
+            if(!LocalTabletLibrary.current) listOf(-1, 1).forEach { sign ->
                 if (target(sign) != null && (sign < 0 || start + span < actual))
                     Box(
                         Modifier.align(if (sign < 0) Alignment.CenterStart else Alignment.CenterEnd)

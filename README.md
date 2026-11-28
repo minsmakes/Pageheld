@@ -1,17 +1,23 @@
-<p align="center"><img src="docs/readme/pageheld-icon-v1.7.svg" width="112" height="112" alt="Pageheld clover icon"></p>
+<p align="center"><img src="docs/readme/pageheld-icon-v1.7.svg" width="112" height="112" alt="Memospine clover icon"></p>
 
-<h1 align="center">Pageheld.</h1>
+<h1 align="center">Memospine.</h1>
 
 <p align="center">
   <a href="https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld.apk"><img src="docs/readme/download-android.svg" alt="Download phone edition"></a>
   <a href="https://github.com/minsmakes/Pageheld/releases/latest/download/Pageheld-Tablet.apk"><img src="docs/readme/download-tablet.svg" alt="Download tablet edition"></a>
 </p>
 
-<p align="center">Source version 1.9.2 · Android 9 or newer</p>
+<p align="center">2.0 candidate source · Published downloads currently serve Pageheld 1.9.2 · Android 9 or newer</p>
 
-Pageheld is a personal journal for Android. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
+Memospine (메모스파인) is a private Android library for personal journals &amp; memories. Write on ruled ivory paper, keep photos beside your words, and revisit pages by chapter or place. Your notebook stays on your device.
 
-## Screenshots
+## Memospine 2.0 on tablets
+
+Library holds nine books per shelf page. Select a book before opening Today or Moments. Entries and locations follow the selected book. Use **New Book** to create a cover, then open **Book Studio** to customize materials, lettering, photos and decorations. The phone edition continues to use the original single-notebook navigation.
+
+[2.0 installation, upgrade and encrypted backup guidance](docs/design/v2.0/RELEASE_NOTES.md) · [Release progress and acceptance evidence](docs/design/v2.0/IMPLEMENTATION_STATUS.md) · [Book Studio artwork credits](docs/design/v2.0/source_assets/Pageheld_Asset_Pack_Vol01/README.md)
+
+## Pageheld 1.7 screenshots
 
 <p align="center"><a href="docs/design/screenshots/v1.7/overview.jpg"><img src="docs/design/screenshots/v1.7/overview.jpg" width="960" alt="Pageheld 1.7 on a landscape tablet, showing Today, the diary cover, chapters, Moments, and the writing tools"></a></p>
 
@@ -31,9 +37,9 @@ Today shows the local date and your latest writings. Choose **Today’s diary** 
 
 The toolbar switches between typing, pen, eraser, media, mood, weather and places. On wide tablets, the toolbar sits alongside the entry title to give the paper more vertical space. Text flows onto additional sheets as you write. Use **More → Add page** for a deliberate break. Tap the title to rename an entry, or choose the **Note** template under **Template & chapter**. The first import in each entry shows a short two-finger resizing hint. Tap a print to select it, drag to move and pinch to resize. Long-press to open the attachment viewer.
 
-Choose **Done** to save your diary entry and return to its chapter. While you edit, changes stay in the open editor. If you go back or use **More → Navigate**, Pageheld asks before discarding unsaved changes. Drafts saved in earlier versions are still available in your diary.
+Choose **Done** to save your diary entry and return to its chapter. While you edit, changes stay in the open editor. If you go back or use **More → Navigate**, Memospine asks before discarding unsaved changes. Drafts saved in earlier versions are still available in your diary.
 
-Choose **More → Appearance → Notebook theme** to switch between Sage, Denim, Rose and Umber. Each theme changes the interface and desk backgrounds as well as the cover and accents. Use **Paper tone** to change the writing paper separately.
+Choose **More → Appearance → Notebook theme** to switch between Sage, Denim, Rose and Umber. Each theme changes the interface and desk backgrounds. Tablet books keep their own cover colors. Use **Paper tone** to change the writing paper separately.
 
 Tap **펜** to write with a stylus. Tap it again to choose an illustrated nib, adjust width, opacity and pressure with a live preview, save a favorite or enable finger writing. Tap the active **지우개** to choose whole-stroke or area erasing. **더보기 → 올가미 선택** lets you circle handwriting, drag it across the sheet and open **선택 편집** to copy, resize or rotate it.
 
@@ -43,7 +49,7 @@ Swipe across the paper to turn within the same dated entry. When drawing with a 
 
 For a new version, use the same download link and tap **Update**. Android keeps your journal when it installs an update signed with the same key. For a backup, open the **profile icon**, export your encrypted notebook, and keep the file and its passphrase somewhere safe.
 
-If you already use a development build, Android may report a signature conflict. Keep that copy installed while you export your notebook and check that you have the backup file and passphrase. Uninstalling Pageheld erases the journal stored on the device.
+If you already use a development build, Android may report a signature conflict. Keep that copy installed while you export your notebook and check that you have the backup file and passphrase. Uninstalling the application erases the journal stored on the device.
 
 ## Digital Diary · November 24, 2026
 
@@ -65,6 +71,6 @@ The debug installers are under `app/build/outputs/apk/phone/debug/` and `app/bui
 
 **Moments** opens an interactive map. Choose a photo marker to see linked memories. Search and filter places or switch to the saved list from the map controls. **Place** in the editor offers place search and recent locations. **Manage places** opens the existing map pin, GPS, notes, visit time, ordering and media associations.
 
-Room stores entries, notebook layout, chapters and locations. DataStore stores preferences and check-ins. MapLibre uses OpenFreeMap over the network for visible map areas. Pageheld requests foreground location permission when you choose a one-time fix. Export files contain journal text and attachments and support up to 256 MiB of uncompressed content.
+Room stores entries, notebook layout, chapters and locations. DataStore stores preferences and check-ins. MapLibre uses OpenFreeMap over the network for visible map areas. Memospine requests foreground location permission when you choose a one-time fix. Export files contain journal text and attachments and support up to 256 MiB of uncompressed content.
 
 See [implementation and verification details](docs/IMPLEMENTATION_STATUS.md), [the approved design brief](docs/design/PAGEHELD_CODEX_VISUAL_BRIEF.md), [Ownglyph font credits and license](docs/OWNGLYPH-LICENSE.md), [Libre Caslon Text’s license](app/src/main/assets/licenses/LibreCaslonText-OFL.txt), [Kalam’s license](docs/KALAM-LICENSE.txt), and [the icon license](docs/LUCIDE-LICENSE.txt).

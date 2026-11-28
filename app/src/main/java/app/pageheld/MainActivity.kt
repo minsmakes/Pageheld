@@ -33,11 +33,18 @@ val tabs = listOf("Today" to "sun", "Diaries" to "book-open", "Moments" to "hear
 
 @Composable
 fun Pageheld(book: Notebook) {
-    val data by remember(book) { book.dao.pages() }.collectAsState(initial = null)
-    val chapters by remember(book) { book.dao.chapters() }.collectAsState(emptyList())
     val preferences by book.settings.collectAsState(initial = null)
     PageheldTheme(book, preferences.orEmpty()) {
-        NotebookScreens(book, data, chapters, preferences)
+        if (preferences != null) {
+            if (BuildConfig.FLAVOR == "tablet" && androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >= 600) {
+                TabletLibrary(book, preferences.orEmpty())
+            } else {
+                LaunchedEffect(book) { book.library.ensure(LibraryBook(id=LEGACY_BOOK,title="Memospine.")) }
+                val data by remember(book) { book.library.pages(LEGACY_BOOK) }.collectAsState(initial = null)
+                val chapters by remember(book) { book.library.chapters(LEGACY_BOOK) }.collectAsState(emptyList())
+                NotebookScreens(book, data, chapters, preferences)
+            }
+        }
     }
 }
 
@@ -90,7 +97,7 @@ internal fun NotebookScreens(
     chapters: List<Chapter>,
     preferences: Map<String, String>?,
 ) {
-    val places by remember(book) { book.dao.locations() }.collectAsState(initial = null)
+    val places by remember(book) { book.library.locations(LEGACY_BOOK) }.collectAsState(initial = null)
     LaunchedEffect(book) {
         book.errors.collect { Toast.makeText(book.context, it, Toast.LENGTH_LONG).show() }
     }

@@ -226,6 +226,7 @@ internal constructor(
     val context: Context,
     val db: NotebookDb =
         Room.databaseBuilder(context, NotebookDb::class.java, "pageheld.db")
+            .addCallback(libraryIntegrity)
             .addMigrations(locationMigration, mediaPlacementMigration, weatherMigration, documentMigration, libraryMigration)
             .build(),
 ) {

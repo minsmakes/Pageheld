@@ -302,9 +302,7 @@ internal fun EditorDialog(
                                 try {
                                     val saved = session.book.dao.page(page.id)
                                     session.book.dao.removePage(page.id)
-                                    saved?.files().orEmpty().forEach {
-                                        File(mediaDir(session.book), it).delete()
-                                    }
+                                    if(saved!=null) session.book.releaseUnused(saved.files()+DiaryLayout.read(saved).photoDecorations())
                                     result.complete(Unit)
                                 } catch (e: Exception) {
                                     result.completeExceptionally(e)

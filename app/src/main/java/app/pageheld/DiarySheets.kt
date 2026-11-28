@@ -30,7 +30,7 @@ internal fun hasSheetContent(
     val text = slices.getOrNull(index)
     return text != null && page.body.substring(text.start, text.end).isNotEmpty() ||
         art.lines.any { it.sheet == index } ||
-        art.prints.values.any { it.sheet == index }
+        art.prints.values.any { it.sheet == index } || !art.decorations[art.sheetIds.getOrNull(index)].isNullOrEmpty()
 }
 
 // Reify the surviving measured boundaries once. This also handles a sheet cut from a
@@ -74,6 +74,7 @@ internal fun removeSheet(
     val cursor = parts.take(dest).sumOf { it.length + 1 }.coerceAtMost(body.length)
     return next to
         art.copy(
+            decorations = art.decorations - listOfNotNull(art.sheetIds.getOrNull(index)).toSet(),
             sheetIds = ids.ifEmpty { listOf(uid()) },
             sheet = dest,
             cursor = cursor,

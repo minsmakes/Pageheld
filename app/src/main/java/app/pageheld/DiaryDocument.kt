@@ -64,6 +64,7 @@ internal data class DiaryLayout(
     val eraserSize: Float = 24f,
     val sheetIds: List<String> = emptyList(),
     val resizeHintSeen: Boolean = false,
+    val decorations: Map<String,List<CoverLayer>> = emptyMap(),
 ) {
     fun encode(): String {
         val ink = JSONArray()
@@ -82,7 +83,8 @@ internal data class DiaryLayout(
             photos.put(name, JSONArray().put(p.sheet).put(p.x).put(p.y).put(p.width))
         }
         return JSONObject()
-            .put("version", 2)
+            .put("version", if(decorations.isEmpty()) 2 else 3)
+            .put("decorations",JSONObject().also { d -> decorations.forEach { (id,layers) -> d.put(id,JSONArray(layers.map { it.encode() })) } })
             .put("sheets", JSONArray(sheetIds))
             .put("resizeHintSeen", resizeHintSeen)
             .put("opacity", opacity)
@@ -121,7 +123,7 @@ internal data class DiaryLayout(
                 )
             }
             val json = JSONObject(page.notebookLayout)
-            require(json.getInt("version") in 1..2) { "Unsupported diary layout" }
+            require(json.getInt("version") in 1..3) { "Unsupported diary layout" }
             val ink = json.getJSONArray("ink")
             val lines =
                 List(ink.length()) { i ->
@@ -171,6 +173,9 @@ internal data class DiaryLayout(
                     ?.let { ids -> List(ids.length()) { ids.getString(it) } }
                     .orEmpty(),
                 json.optBoolean("resizeHintSeen", false),
+                json.optJSONObject("decorations")?.let { d -> d.keys().asSequence().associateWith { id ->
+                    val a=d.getJSONArray(id); require(a.length()<=200); List(a.length()) { CoverLayer.read(a.getJSONObject(it)) }
+                } }.orEmpty(),
             )
         }
     }
@@ -180,7 +185,7 @@ internal fun remapLayout(raw: String, files: Map<String, String>): String {
     if (raw.isBlank()) return raw
     val layout = DiaryLayout.read(Page(notebookLayout = raw))
     return layout
-        .copy(prints = layout.prints.mapNotNull { (old, p) -> files[old]?.let { it to p } }.toMap())
+        .copy(decorations=layout.decorations.mapValues { (_,layers) -> layers.map { if(it.kind=="photo") it.copy(asset=files.getValue(it.asset)) else it } }, prints = layout.prints.mapNotNull { (old, p) -> files[old]?.let { it to p } }.toMap())
         .encode()
 }
 

@@ -85,9 +85,13 @@ internal fun DiaryHome(
     chapters: List<Chapter>,
     places: List<DiaryLocation>,
     prefs: Map<String, String>,
+    initialSection: String = "Today",
+    library: (() -> Unit)? = null,
 ) {
+    val identity = LocalBook.current
+    val ownerId = identity?.id ?: LEGACY_BOOK
     val day = localToday()
-    var section by rememberSaveable { mutableStateOf("Today") }
+    var section by rememberSaveable { mutableStateOf(initialSection) }
     var shelf by rememberSaveable {
         mutableStateOf(if (prefs["openingCover"] == "false") "Index" else "Cover")
     }
@@ -109,6 +113,7 @@ internal fun DiaryHome(
         section = "Diaries"
     }
     fun navigate(tab: String) {
+        if (tab == "Diaries" && library != null) { library(); return }
         if (tab == "Profile") profileReturn = section
         section = tab
     }
@@ -117,10 +122,11 @@ internal fun DiaryHome(
             section == "Profile" -> section = profileReturn
             section == "Diaries" && shelf in listOf("All", "Manage", "Chapter") -> shelf = "Index"
             section == "Diaries" && shelf == "Index" -> shelf = "Cover"
+            library != null -> library()
             else -> section = "Today"
         }
     }
-    BackHandler(!editing && section != "Today") { back() }
+    BackHandler(!editing && (section != "Today" || library != null)) { back() }
     Column(
         Modifier.fillMaxSize()
             .background(notebookBackground)
@@ -131,6 +137,7 @@ internal fun DiaryHome(
                 pages.find { it.id == entry }
                     ?: Page(
                         id = entry,
+                        bookId = ownerId,
                         created = entryTime,
                         draft = true,
                         template = newTemplate,
@@ -142,7 +149,7 @@ internal fun DiaryHome(
                 val restored by produceState<Page?>(null,entryId) {
                     val result=kotlinx.coroutines.CompletableDeferred<Page?>()
                     book.queue {
-                        try { result.complete(book.dao.page(entryId)) }
+                        try { result.complete(book.dao.page(entryId)?.takeIf { it.bookId == ownerId }) }
                         catch(e: Exception) { result.complete(seed);book.errors.emit("Couldn’t reload the entry. Showing the current copy.") }
                     }
                     value=result.await() ?: seed
@@ -165,6 +172,7 @@ internal fun DiaryHome(
                         entry = ""
                         attachment = ""
                         section = "Diaries"
+                        identity?.let { book.queue { book.library.rememberPage(it.id, saved.id) } }
                         chapter = saved.chapter ?: monthKey(saved)
                         shelf = "Chapter"
                     },
@@ -172,6 +180,7 @@ internal fun DiaryHome(
             }
         } else {
             NavigationHeader(section, ::navigate)
+            if (identity != null && section in listOf("Today","Moments")) Text(identity.title, Modifier.padding(horizontal=18.dp),color=sage)
             when (section) {
                 "Today" ->
                     TodaySheet(
@@ -205,7 +214,7 @@ internal fun DiaryHome(
                             edit(
                                 current
                                     ?: Page(
-                                        id = "daily-$day",
+                                        id = dailyId(ownerId, day),
                                         template = "Daily Diary",
                                         draft = true,
                                     )
@@ -234,7 +243,10 @@ internal fun DiaryHome(
                         ->
                         when (leaf.section) {
                             "Cover" ->
-                                DiaryCover(prefs["owner"].orEmpty(), day.year, motion) {
+                                if (identity != null) OpeningBook(book,identity,motion) {
+                                    val last = pages.find { it.id == identity.readingPage }
+                                    if (last != null) edit(last) else shelf = "Index"
+                                } else DiaryCover(prefs["owner"].orEmpty(), day.year, motion) {
                                     shelf = "Index"
                                 }
                             "Index" ->
@@ -332,8 +344,8 @@ private fun monthTitle(pages: List<Page>, key: String) =
     pages.firstOrNull { monthKey(it) == key }?.let { stamp(it.created, "yMMMM") } ?: "My chapters"
 
 @Composable
-private fun NavigationHeader(section: String, select: (String) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth().height(57.dp).background(notebookBackground)) {
+internal fun NavigationHeader(section: String, select: (String) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(if(LocalTabletLibrary.current) 44.dp else 57.dp).background(notebookBackground)) {
         val compact = maxWidth < 610.dp
         Row(
             Modifier.align(Alignment.CenterStart).padding(start = if (compact) 8.dp else 22.dp),
@@ -341,14 +353,14 @@ private fun NavigationHeader(section: String, select: (String) -> Unit) {
         ) {
             Botanical(Modifier.size(if (compact) 23.dp else 31.dp))
             if (!compact)
-                Text("Pageheld.", Modifier.padding(start = 6.dp), fontSize = uiSp(25), color = ink)
+                Text("Memospine.", Modifier.padding(start = 6.dp), fontSize = uiSp(25), color = ink)
         }
         Row(
             Modifier.align(Alignment.Center),
             horizontalArrangement = Arrangement.spacedBy(if (compact) 1.dp else 16.dp),
         ) {
             tabs.forEach { (name, icon) ->
-                val active = name == section
+                val active = name == section || section == "Library" && name == "Diaries"
                 Row(
                     Modifier.height(42.dp)
                         .clip(CircleShape)
@@ -364,7 +376,7 @@ private fun NavigationHeader(section: String, select: (String) -> Unit) {
                 ) {
                     Glyph(icon, tint = if (active && name != "Today") ivory else ink, size = 15)
                     Text(
-                        name,
+                        if (LocalTabletLibrary.current) when(name) { "Diaries" -> wording("Library","서재"); "Today" -> wording("Today","오늘"); else -> wording("Moments","순간들") } else name,
                         Modifier.padding(start = 4.dp),
                         color = if (active && name != "Today") ivory else ink,
                         fontSize = uiSp(if (compact) 14 else 18),
@@ -611,7 +623,7 @@ private fun DiaryCover(owner: String, year: Int, motion: Boolean, open: () -> Un
                     Botanical(Modifier.size(h * .14f), palette.accent)
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "Pageheld.",
+                        "Memospine.",
                         fontSize = (h.value * .088f).coerceIn(26f, 54f).sp,
                         color = ink,
                     )

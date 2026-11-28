@@ -48,7 +48,7 @@ internal class WritingSession(
     private val imported = mutableSetOf<String>()
     val hasUnsavedChanges: Boolean
         get() = page != initial || layout.lines != originalLayout.lines ||
-            layout.prints != originalLayout.prints || layout.sheetIds != originalLayout.sheetIds ||
+            layout.decorations != originalLayout.decorations || layout.prints != originalLayout.prints || layout.sheetIds != originalLayout.sheetIds ||
             places != initialPlaces
     private val originalLayout = layout
 
@@ -215,8 +215,8 @@ internal class WritingSession(
         locked = true
         val final = page.copy(draft = false, notebookLayout = persistedLayout().encode())
         val finalPlaces = places
-        val retainedFiles = final.files().toSet() + finalPlaces.flatMap { it.media.lines() }
-        val removedFiles = (initial.files().toSet() + imported) - retainedFiles
+        val retainedFiles = layout.decorations.values.flatten().filter { it.kind=="photo" }.map { it.asset }.toSet() + final.files().toSet() + finalPlaces.flatMap { it.media.lines() }
+        val removedFiles = (initial.files().toSet() + originalLayout.photoDecorations() + imported) - retainedFiles
         val save = CompletableDeferred<Unit>()
         book.queue {
             try {
@@ -226,7 +226,7 @@ internal class WritingSession(
                         .forEach { book.dao.removeLocation(final.id, it.id) }
                     finalPlaces.forEach { book.dao.writeLocation(it) }
                 }
-                removedFiles.forEach { runCatching { File(mediaDir(book), it).delete() } }
+                runCatching { book.releaseUnused(removedFiles) }
                 save.complete(Unit)
             } catch (e: Exception) {
                 save.completeExceptionally(e)
@@ -338,7 +338,9 @@ internal fun DiaryEditor(
             "Save failed" -> wording("Save failed", "저장 실패")
             else -> ""
         }
+    val tablet = LocalTabletLibrary.current
     var panel by remember { mutableStateOf("") }
+    var decorate by rememberSaveable { mutableStateOf(false) }
     var dialog by rememberSaveable { mutableStateOf("") }
     var viewing by rememberSaveable { mutableStateOf(attachment) }
     var selected by rememberSaveable { mutableStateOf("") }
@@ -372,6 +374,29 @@ internal fun DiaryEditor(
             hintedPrint = null
         }
     }
+    fun attach(file: File, sheet: Int) {
+        session.trackImport(file.name)
+        val layout=session.layout
+        session.update(session.page.copy(media=(session.page.files()+file.name).joinToString("\n")),
+            layout.copy(mode="Photo",resizeHintSeen=true,prints=layout.prints+(file.name to PrintPosition(sheet))))
+        selected=file.name
+        hintedPrint=if(layout.resizeHintSeen) null else file.name
+    }
+    var cameraName by rememberSaveable { mutableStateOf("") }
+    val camera=rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        if(cameraName.isNotEmpty()) {
+            val file=File(mediaDir(book),cameraName)
+            if(saved && file.length()>0) attach(file,session.layout.sheet) else file.delete()
+        }
+        cameraName=""
+    }
+    fun takePhoto() {
+        val file=File(mediaDir(book),uid()+".photo")
+        try {
+            cameraName=file.name
+            camera.launch(androidx.core.content.FileProvider.getUriForFile(book.context,"app.pageheld.camera",file))
+        } catch(e:Exception) { cameraName=""; file.delete(); session.error="Camera is unavailable." }
+    }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri != null)
@@ -403,20 +428,7 @@ internal fun DiaryEditor(
                                 }
                             }
                         session.locked = false
-                        session.trackImport(file.name)
-                        val layout = session.layout
-                        session.update(
-                            session.page.copy(
-                                media = (session.page.files() + file.name).joinToString("\n")
-                            ),
-                            layout.copy(
-                                mode = "Photo",
-                                resizeHintSeen = true,
-                                prints = layout.prints + (file.name to PrintPosition(sheet)),
-                            ),
-                        )
-                        selected = file.name
-                        hintedPrint = if (layout.resizeHintSeen) null else file.name
+                        attach(file,sheet)
                     } catch (e: Exception) {
                         copied?.delete()
                         if (e is CancellationException) throw e
@@ -519,7 +531,7 @@ internal fun DiaryEditor(
     }
     val tools: @Composable () -> Unit = {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val toolWidth = ((maxWidth - 26.dp) / 10).coerceIn(48.dp, 160.dp)
+            val toolWidth = if(tablet) 41.dp else ((maxWidth - 26.dp) / 10).coerceIn(48.dp, 160.dp)
             Row(
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 9.dp, vertical = 3.dp)
@@ -531,12 +543,12 @@ internal fun DiaryEditor(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val width = toolWidth
-                toolNames.forEachIndexed { i, name ->
+                (if(tablet) listOf("Pen","Type","Eraser","Lasso","Photo","Camera","Video","Stickers","Place","Undo","Redo","Pages","More","Mood","Weather") else toolNames).forEachIndexed { i, name ->
                     Box {
                         val active = art.mode == name || panel == name
                         Column(
                             Modifier.width(width)
-                                .height(46.dp)
+                                .height(if(tablet) 40.dp else 46.dp)
                                 .clip(round)
                                 .background(if (active) pale else Color.Transparent)
                                 .clickable(
@@ -548,7 +560,11 @@ internal fun DiaryEditor(
                                     session.flushInput()
                                     panel = ""
                                     when (name) {
-                                        "Type" -> mode(name)
+                                        "Stickers" -> { mode("Decorate"); decorate=true }
+                                        "Camera" -> takePhoto()
+                                        "Video" -> picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                                        "Pages" -> dialog="Page navigation"
+                                        "Type","Lasso" -> mode(name)
                                         "Pen",
                                         "Eraser" -> {
                                             if (session.layout.mode == name) panel = name
@@ -570,8 +586,9 @@ internal fun DiaryEditor(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {
-                            Glyph(toolIcons[i], size = 18)
-                            Text(wording(name, koreanTools[i]), fontSize = uiSp(13), maxLines = 1)
+                            val toolIndex=toolNames.indexOf(name)
+                            Glyph(toolIcons.getOrNull(toolIndex) ?: if(name=="Camera") "camera" else if(name=="Video") "video" else if(name=="Pages") "book-open" else if(name=="Lasso") "layers" else "leaf", size = 18)
+                            if(!tablet) Text(wording(name, koreanTools.getOrNull(toolIndex) ?: when(name) {"Camera"->"카메라";"Video"->"비디오";"Pages"->"페이지";"Lasso"->"올가미";else->"스티커"}), fontSize = uiSp(13), maxLines = 1)
                         }
                         DropdownMenu(
                             panel == name,
@@ -632,7 +649,7 @@ internal fun DiaryEditor(
                                         if (mood) moods else weatherIllustrations.map { it.code }
                                     val symbols = listOf("😊", "🙂", "😕", "😔", "😢")
                                     Column(Modifier.width(236.dp).padding(8.dp)) {
-                                        Text(wording(name, koreanTools[i]), fontSize = uiSp(17))
+                                        if(!tablet) Text(wording(name, koreanTools[i]), fontSize = uiSp(17))
                                         FlowRow(
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
@@ -838,6 +855,7 @@ internal fun DiaryEditor(
         }
     }
     Column(Modifier.fillMaxSize().background(notebookBackground)) {
+        if(tablet) NavigationHeader("Library") { tab -> leave { model.clear(); navigate(tab) } }
         EditorControls(header, tools)
         WritingSpread(
             session,
@@ -853,6 +871,7 @@ internal fun DiaryEditor(
             textPages = written
         }
     }
+    if(decorate) PageDecorationPanel(session) { decorate=false }
     if (menu) {
         AlertDialog(
             onDismissRequest = { menu = false },
@@ -909,6 +928,10 @@ internal fun DiaryEditor(
                 TextButton(onClick = { deletion = null }) { Text(wording("Cancel", "취소")) }
             },
         )
+    } else if (dialog == "Page navigation") {
+        AlertDialog(onDismissRequest={dialog=""},title={Title(wording("Pages","페이지"))},text={
+            androidx.compose.foundation.lazy.LazyRow { items(maxOf(pageCount,1)) { i -> TextButton(onClick={session.turnTo(i);dialog=""}) {Text((i+1).toString())} } }
+        },confirmButton={TextButton(onClick={addPage();dialog=""}){Text(wording("+ Add page","+ 페이지 추가"))}})
     } else if (dialog == "Clear ink") {
         val index = art.sheet
         AlertDialog(

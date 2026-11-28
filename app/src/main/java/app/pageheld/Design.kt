@@ -44,6 +44,7 @@ internal const val PAGEHELD_WORDMARK = "Memospine."
 val round = RoundedCornerShape(9.dp)
 val icons =
     mapOf(
+        "camera" to R.drawable.i_camera,
         "house" to R.drawable.i_house,
         "book-open" to R.drawable.i_book_open,
         "map-pin" to R.drawable.i_map_pin,
