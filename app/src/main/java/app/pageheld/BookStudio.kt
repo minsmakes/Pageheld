@@ -8,6 +8,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.shape.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -197,7 +201,14 @@ internal fun BookStudio(
         front = state.front
         back = state.back
     }
+    var editingGesture by remember { mutableStateOf(false) }
+    var capturedGesture by remember { mutableStateOf(false) }
+    val fonts by produceState(listOf("몽글동심","Handwriting","Serif","Sans"),book) {
+        value=value+withContext(Dispatchers.IO) { book.context.importedFonts().map {it.name} }
+    }
     fun record() {
+        if(editingGesture && capturedGesture) return
+        if(editingGesture) capturedGesture=true
         if (past.size >= 70) past.removeAt(0)
         past.add(snapshot())
         future.clear()
@@ -214,7 +225,7 @@ internal fun BookStudio(
             error = "This cover already has 200 layers."
             return
         }
-        update(design.copy(layers = design.layers + layer))
+        update(design.copy(layers = design.layers.placeArtwork(layer,selected)))
         selected = layer.id
     }
     fun leave() {
@@ -287,7 +298,14 @@ internal fun BookStudio(
             Text(wording("Done", "완료"))
         }
     }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize().pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
+            editingGesture=true; capturedGesture=false
+            try { do {val event=awaitPointerEvent(PointerEventPass.Final)} while(event.changes.any { it.pressed }) }
+            finally {editingGesture=false}
+        }
+    }) {
         Box(
             Modifier.fillMaxSize()
                 .linen(
@@ -573,9 +591,9 @@ internal fun BookStudio(
                                             label = { Text(wording("Lettering", "글자")) },
                                         )
                                     FlowRow {
-                                        listOf("몽글동심", "Handwriting", "Serif", "Sans").forEach { f
+                                        fonts.forEach { f
                                             ->
-                                            StudioChoice(f, obj.font == f) {
+                                            StudioChoice(f.substringAfter("--"), obj.font == f) {
                                                 edit(obj.copy(font = f))
                                             }
                                         }

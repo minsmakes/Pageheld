@@ -30,6 +30,7 @@ internal data class CoverLayer(
     val font: String = "몽글동심",
     val color: Int = 0xff433d30.toInt(),
     val align: String = "Center",
+    val crop: Boolean = false,
 ) {
     fun encode() =
         JSONObject()
@@ -45,6 +46,7 @@ internal data class CoverLayer(
             .put("font", font)
             .put("color", color)
             .put("align", align)
+            .put("crop",crop)
 
     companion object {
         fun read(j: JSONObject): CoverLayer {
@@ -63,6 +65,7 @@ internal data class CoverLayer(
                     j.optString("font", "몽글동심"),
                     j.optInt("color", 0xff433d30.toInt()),
                     j.optString("align", "Center"),
+                    j.optBoolean("crop"),
                 )
                 .also {
                     require(it.kind in setOf("title", "text", "art", "photo"))
@@ -70,6 +73,16 @@ internal data class CoverLayer(
                 }
         }
     }
+}
+
+/** Frame aperture measured on the Vol. 01 alpha mask. Both objects remain editable. */
+internal fun List<CoverLayer>.placeArtwork(art: CoverLayer, selection: String): List<CoverLayer> {
+    val photo=find { it.id==selection && it.kind=="photo" }
+    if(art.asset!="polaroid" || photo==null) return this+art
+    val frameWidth=(photo.width/.84f).coerceAtMost(2f)
+    val fitted=photo.copy(width=frameWidth*.84f,ratio=1.47f,crop=true)
+    val frame=art.copy(x=photo.x,y=photo.y,width=frameWidth,angle=photo.angle)
+    return flatMap { if(it.id==selection) listOf(fitted,frame) else listOf(it) }
 }
 
 internal data class CoverDesign(

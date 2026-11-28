@@ -192,7 +192,7 @@ internal fun BoardFace(inner: Boolean, letteringScale: Float) {
 }
 
 @Composable
-internal fun Ribbon(modifier: Modifier) {
+internal fun Ribbon(modifier: Modifier, color: Color = Binding.ribbon) {
     Canvas(
         modifier.drawWithCache {
             val path =
@@ -206,7 +206,7 @@ internal fun Ribbon(modifier: Modifier) {
                 }
             onDrawBehind {
                 clipPath(path) {
-                    drawRect(Binding.ribbon)
+                    drawRect(color)
                     drawContext.canvas.nativeCanvas.drawRect(0f, 0f, size.width, size.height, linen)
                     for (fraction in listOf(.14f, .86f)) drawLine(
                         Binding.foil.copy(alpha = .55f),
@@ -242,12 +242,12 @@ internal fun Modifier.bindingShading(wide: Boolean) = drawWithCache {
 }
 
 @Composable
-internal fun Stack(modifier: Modifier, covered: Boolean = true) {
+internal fun Stack(modifier: Modifier, covered: Boolean = true, cloth: Color = Binding.board) {
     Box(
         modifier
             .shadow(Binding.elevation, Binding.corner)
             .clip(Binding.corner)
-            .linen(if (covered) Binding.board else Color(0xffc7b699))
+            .linen(if (covered) cloth else Color(0xffc7b699))
             .padding(start = 3.dp, end = 4.dp, top = 3.dp, bottom = 4.dp)
             .background(edge, Binding.corner)
             .drawWithCache {

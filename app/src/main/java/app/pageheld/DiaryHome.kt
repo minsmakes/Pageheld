@@ -366,6 +366,7 @@ internal fun NavigationHeader(section: String, select: (String) -> Unit) {
                         .clip(CircleShape)
                         .clickable { select(name) }
                         .padding(vertical = 4.dp)
+                        .then(if(LocalTabletLibrary.current) Modifier.border(.6.dp,edge,CircleShape) else Modifier)
                         .background(
                             if (active && name == "Today") pale
                             else if (active) sage else Color.Transparent,

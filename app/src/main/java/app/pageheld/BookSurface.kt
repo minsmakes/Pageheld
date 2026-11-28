@@ -178,7 +178,7 @@ internal fun ArtworkLayer(
                         it.asImageBitmap(),
                         null,
                         Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
+                        contentScale = if(layer.crop) ContentScale.Crop else ContentScale.Fit,
                     )
                 }
             }

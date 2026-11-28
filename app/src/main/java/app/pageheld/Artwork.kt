@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.*
@@ -102,13 +104,17 @@ internal fun ArtImage(id: String, modifier: Modifier, tint: Color? = null) {
                 )
             }
         }
-    bitmap?.let {
-        Image(
-            it.asImageBitmap(),
-            null,
-            modifier,
-            contentScale = if (tint == null) ContentScale.Fit else ContentScale.Crop,
-            colorFilter = filter,
-        )
+    bitmap?.let { pixels ->
+        if (tint == null) Image(pixels.asImageBitmap(),null,modifier,contentScale=ContentScale.Fit)
+        else Spacer(modifier.drawWithCache {
+            val scale=(size.minDimension*.52f/pixels.width).coerceAtLeast(.001f)
+            val shader=android.graphics.BitmapShader(pixels,android.graphics.Shader.TileMode.MIRROR,android.graphics.Shader.TileMode.MIRROR)
+            shader.setLocalMatrix(android.graphics.Matrix().apply {setScale(scale,scale)})
+            val paint=android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
+                this.shader=shader
+                colorFilter=filter?.asAndroidColorFilter()
+            }
+            onDrawBehind {drawContext.canvas.nativeCanvas.drawRect(0f,0f,size.width,size.height,paint)}
+        })
     }
 }

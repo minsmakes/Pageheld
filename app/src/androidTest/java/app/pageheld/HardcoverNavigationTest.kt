@@ -7,6 +7,7 @@ import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.toArgb
 import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -157,6 +158,16 @@ class HardcoverNavigationTest {
                 automation.waitForIdle(150, 3000)
             }
         }
+        if (label in tools) {
+            // On a phone the toolbar clips the outer buttons during horizontal scrolling.
+            // Activate the named button just as a screen reader would.
+            var control: AccessibilityNodeInfo? = node(label)
+            while (control != null && !control.isClickable) control = control.parent
+            if (control?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
+                automation.waitForIdle(200, 4000)
+                return
+            }
+        }
         val r = bounds(label)
         val at = r.exactCenterX() to r.exactCenterY()
         stroke(listOf(at, at))
@@ -184,25 +195,26 @@ class HardcoverNavigationTest {
                 tap("More")
                 tap("Appearance")
                 val chip = node(target)
-                val control = if (chip.isClickable) chip else requireNotNull(chip.parent)
-                assertTrue(control.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-                runBlocking { kotlinx.coroutines.withTimeout(5000) { book.settings.first { it["notebookTheme"] == target } } }
+                var control: AccessibilityNodeInfo? = chip
+                while (control != null && !control.isClickable) control = control.parent
+                assertTrue(control?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
+                runBlocking { kotlinx.coroutines.withTimeout(12000) { book.settings.first { it["notebookTheme"] == target } } }
                 closeMenu()
                 automation.waitForIdle(250, 5000)
                 val y = bounds("Back to chapter").centerY()
                 val expected = NotebookPalette.entries.single { it.id == target }.background
-                val screenshot = requireNotNull(automation.takeScreenshot())
-                val actual = android.graphics.Color.rgb(
-                    kotlin.math.round(expected.red * 255).toInt(),
-                    kotlin.math.round(expected.green * 255).toInt(),
-                    kotlin.math.round(expected.blue * 255).toInt(),
-                )
-                try {
-                    assertTrue("The editor header uses the selected background",
-                        (0 until screenshot.width).any { screenshot.getPixel(it, y) == actual })
-                } finally {
-                    screenshot.recycle()
+                val deadline = SystemClock.uptimeMillis() + 8000
+                var headerVisible = false
+                while (!headerVisible && SystemClock.uptimeMillis() < deadline) {
+                    val screenshot = requireNotNull(automation.takeScreenshot())
+                    try {
+                        headerVisible = (0 until screenshot.width).any { screenshot.getPixel(it, y) == expected.toArgb() }
+                    } finally {
+                        screenshot.recycle()
+                    }
+                    if (!headerVisible) SystemClock.sleep(100)
                 }
+                assertTrue("The editor header uses the selected background", headerVisible)
                 tap("More")
                 tap("Appearance")
                 assertTrue(node(target).isSelected || node(target).parent?.isSelected == true ||

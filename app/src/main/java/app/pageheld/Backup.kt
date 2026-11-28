@@ -347,36 +347,22 @@ internal suspend fun restore(book: Notebook, uri: Uri, password: String) {
                     val id = b.getString("id")
                     require(id.isNotBlank() && owners.add(id))
                     val local = localBooks[id]
-                    if (
-                        local == null ||
-                            id == LEGACY_BOOK &&
-                                local.front == "{}" &&
-                                local.back == "{}" &&
-                                local.title == "Memospine."
-                    ) {
-                        val f = cover(b.getJSONObject("front").toString(), false)
-                        val r = cover(b.getJSONObject("back").toString(), true)
-                        if (local == null)
-                            book.library.insert(
-                                LibraryBook(
-                                    id,
-                                    b.getString("title"),
-                                    b.getLong("created"),
-                                    b.getLong("modified"),
-                                    b.getLong("position"),
-                                    f,
-                                    r,
-                                    b.optString("readingPage"),
-                                )
-                            )
-                        else
-                            book.library.design(
-                                id,
-                                b.getString("title"),
-                                f,
-                                r,
-                                b.getLong("modified"),
-                            )
+                    val emptyPhoneBook = local != null && id == LEGACY_BOOK &&
+                        local.front == "{}" && local.back == "{}" && local.title == "Memospine." &&
+                        local.readingPage.isEmpty() && id !in existing.values && id !in chapters.values
+                    if (local == null || emptyPhoneBook) {
+                        val restoredBook = LibraryBook(
+                            id = id,
+                            title = b.getString("title"),
+                            created = b.getLong("created"),
+                            modified = b.getLong("modified"),
+                            position = b.getLong("position"),
+                            front = cover(b.getJSONObject("front").toString(), false),
+                            back = cover(b.getJSONObject("back").toString(), true),
+                            readingPage = b.optString("readingPage"),
+                        )
+                        if (local == null) book.library.insert(restoredBook)
+                        else book.library.update(restoredBook)
                     }
                 }
             }

@@ -68,7 +68,7 @@ internal fun PageDecorationPanel(session: WritingSession, close: () -> Unit) {
     val scope = rememberCoroutineScope()
     val full = layers.size >= 200
     fun add(obj: CoverLayer) {
-        session.setDecorations(index) { it + obj }
+        session.setDecorations(index) { it.placeArtwork(obj,selection) }
         selection = obj.id
     }
     val picker =

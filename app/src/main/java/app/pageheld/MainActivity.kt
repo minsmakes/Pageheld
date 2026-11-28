@@ -34,6 +34,8 @@ val tabs = listOf("Today" to "sun", "Diaries" to "book-open", "Moments" to "hear
 @Composable
 fun Pageheld(book: Notebook) {
     val preferences by book.settings.collectAsState(initial = null)
+    val catalog by produceState<List<Artwork>>(emptyList(),book) { value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { readCatalog(book.context) } }
+    CompositionLocalProvider(LocalArtwork provides catalog) {
     PageheldTheme(book, preferences.orEmpty()) {
         if (preferences != null) {
             if (BuildConfig.FLAVOR == "tablet" && androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >= 600) {
@@ -45,6 +47,7 @@ fun Pageheld(book: Notebook) {
                 NotebookScreens(book, data, chapters, preferences)
             }
         }
+    }
     }
 }
 

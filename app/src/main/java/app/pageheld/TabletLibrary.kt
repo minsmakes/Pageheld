@@ -26,10 +26,6 @@ internal fun shelfCount(count: Int) = ((count + 8) / 9).coerceAtLeast(1)
 @Composable
 internal fun TabletLibrary(book: Notebook, prefs: Map<String, String>) {
     val books by remember(book) { book.library.books() }.collectAsState(initial = null)
-    val catalog by
-        produceState<List<Artwork>>(emptyList(), book) {
-            value = withContext(Dispatchers.IO) { readCatalog(book.context) }
-        }
     val all = books ?: return
     var active by rememberSaveable { mutableStateOf(prefs["activeBook"].orEmpty()) }
     var screen by rememberSaveable { mutableStateOf("Library") }
@@ -62,7 +58,6 @@ internal fun TabletLibrary(book: Notebook, prefs: Map<String, String>) {
     }
     CompositionLocalProvider(
         LocalTabletLibrary provides true,
-        LocalArtwork provides catalog,
         LocalBook provides current,
     ) {
         if (screen in listOf("Library", "Studio") || current == null) {
@@ -111,6 +106,8 @@ internal fun TabletLibrary(book: Notebook, prefs: Map<String, String>) {
         }
         if (create)
             NewBookDialog({ create = false }) { title, design ->
+                if (!create) return@NewBookDialog
+                create = false
                 val b = LibraryBook(title = title, front = design.encode())
                 book.queue {
                     book.library.append(b)
@@ -269,7 +266,11 @@ private fun Bookshelf(
             contentAlignment = Alignment.Center,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Title(wording("My Library", "나의 서재"), 29)
+                val accent=sage
+                Box(Modifier.drawBehind {
+                    val line=Path().apply { moveTo(0f,size.height*.96f); quadraticTo(size.width*.30f,size.height*.83f,size.width*.56f,size.height*.91f); quadraticTo(size.width*.80f,size.height*.99f,size.width,size.height*.89f) }
+                    drawPath(line,accent,style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                }.padding(bottom=3.dp)) {Title(wording("My Library", "나의 서재"), 29)}
                 Botanical(Modifier.size(20.dp))
             }
         }
@@ -312,7 +313,7 @@ private fun Bookshelf(
                                         val width =
                                             minOf(
                                                 maxWidth * .82f,
-                                                maxHeight * .99f * design.proportion,
+                                                maxHeight * .93f * design.proportion,
                                             )
                                         BookSurface(
                                             book,

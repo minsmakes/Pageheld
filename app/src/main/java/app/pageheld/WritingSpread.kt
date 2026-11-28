@@ -59,6 +59,8 @@ internal fun WritingSpread(
         Modifier.fillMaxSize().motionEventSpy(session::observeInput).background(Binding.desk)
     ) {
         val tabletBook = LocalTabletLibrary.current
+        val identity=LocalBook.current
+        val cover=remember(identity?.front) {identity?.let {CoverDesign.read(it.front)}}
         val wide = maxWidth >= 580.dp
         val span = if (wide) 2 else 1
         val inset = if (wide) 20.dp else 8.dp
@@ -187,7 +189,7 @@ internal fun WritingSpread(
                     .height(bookHeight)
                     .padding(horizontal = inset, vertical = verticalInset)
             ) {
-                Stack(Modifier.fillMaxSize(), covered = tabletBook)
+                Stack(Modifier.fillMaxSize(), covered = tabletBook, cloth=cover?.let {Color(it.color)} ?: Binding.board)
                 if(tabletBook) Stack(Modifier.fillMaxSize().padding(7.dp),covered=false)
                 Box(
                     Modifier.fillMaxSize()
@@ -477,6 +479,9 @@ internal fun WritingSpread(
                     }
                 }
             }
+        }
+        if(tabletBook && wide && cover!=null && cover.ribbon!=0 && ime==0) {
+            Ribbon(Modifier.align(Alignment.Center).width(8.dp).height((bookHeight-verticalInset*1.5f).coerceAtLeast(0.dp)).shadow(1.dp),Color(cover.ribbon))
         }
         if (showResizeHint && !LocalTabletLibrary.current) {
             Text(

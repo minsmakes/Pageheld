@@ -49,6 +49,58 @@ class StudioJourneyTest {
     }
 
     @Test
+    fun thirdShelfRestoresAndDesignDuplicationKeepsEntriesPrivate() {
+        val ctx = runner.targetContext
+        assumeTrue(BuildConfig.FLAVOR == "tablet" && ctx.resources.configuration.smallestScreenWidthDp >= 600)
+        val db = Room.inMemoryDatabaseBuilder(ctx, NotebookDb::class.java).build()
+        val journal = Notebook(ctx, db)
+        val originalPage = runBlocking { journal.settings.first()["shelfPage"].orEmpty() }
+        val books = (1..19).map { LibraryBook(title = "Shelf book $it") }
+        try {
+            runBlocking {
+                journal.applySettings(mapOf("shelfPage" to "0"))
+                books.forEach { journal.library.append(it) }
+                journal.dao.save(Page(title = "Private entry", bookId = books.last().id))
+            }
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { it.setContent { Pageheld(journal) } }
+                for (page in 1..2) {
+                    click("Next shelf")
+                    runBlocking {
+                        withTimeout(10000) { journal.settings.first { it["shelfPage"] == page.toString() } }
+                    }
+                }
+                click(books.last().title, true)
+                click("Duplicate design")
+                click("Shelf book 19 (2)", true)
+                click("Previous shelf page")
+                runBlocking {
+                    val order = withTimeout(5000) {
+                        journal.library.books().first { it.size == 20 && it[10].title == "Shelf book 19 (2)" }
+                    }
+                    assertTrue(journal.library.pages(order[10].id).first().isEmpty())
+                    assertEquals("Private entry", journal.library.pages(books.last().id).first().single().title)
+                }
+                // Rebuild from the fixture's persisted settings in the same host. Launching
+                // MainActivity again briefly opens the unrelated installed library first.
+                scenario.onActivity { it.setContent { androidx.compose.runtime.key("reopen") { Pageheld(journal) } } }
+                click(books.last().title, true)
+                click("Delete book")
+                click("Cancel")
+                click("Delete book")
+                click("Delete")
+                runBlocking {
+                    withTimeout(5000) { journal.library.books().first { list -> list.none { it.id == books.last().id } } }
+                    assertTrue(journal.library.pages(books.last().id).first().isEmpty())
+                }
+            }
+        } finally {
+            runBlocking { journal.applySettings(mapOf("shelfPage" to originalPage)) }
+            db.close()
+        }
+    }
+
+    @Test
     fun editableFrontAndBackSurviveDrawingUndoAndReopen() {
         val ctx = runner.targetContext
         assumeTrue(

@@ -88,6 +88,8 @@ interface LibraryDao {
 
     @Insert suspend fun insert(book: LibraryBook)
 
+    @Update suspend fun update(book: LibraryBook)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun ensure(book: LibraryBook): Long
 
     @Query("UPDATE LibraryBook SET title=:title,front=:front,back=:back,modified=:now WHERE id=:id")

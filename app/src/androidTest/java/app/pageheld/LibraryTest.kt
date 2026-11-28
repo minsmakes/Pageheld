@@ -125,6 +125,47 @@ class LibraryTest {
     }
 
     @Test
+    fun archiveRestoresImportedFontBytesAndCoverLettering() = runBlocking {
+        val source = Room.inMemoryDatabaseBuilder(ctx, NotebookDb::class.java).build()
+        val target = Room.inMemoryDatabaseBuilder(ctx, NotebookDb::class.java).build()
+        val journal = Notebook(ctx, source)
+        val directory = ctx.fontDirectory().apply { mkdirs() }
+        val font = File(directory, uid() + "--Review lettering.ttf")
+        val archive = File(ctx.cacheDir, uid())
+        try {
+            val bytes = ctx.resources.openRawResource(R.font.ownglyph_mongmongdays).use { it.readBytes() }
+            font.writeBytes(bytes)
+            val title = CoverLayer(kind = "title", asset = "", font = font.name)
+            val front = CoverDesign(layers = listOf(title)).encode()
+            val original = LibraryBook(
+                id = LEGACY_BOOK, title = "Lettering", front = front, created = 10,
+                modified = 30, position = 2, readingPage = "daily-2026-11-28",
+            )
+            journal.library.insert(original)
+            journal.dao.save(Page(id = original.readingPage, bookId = original.id, title = "Last opened"))
+            backup(journal, Uri.fromFile(archive), "review-only")
+            assertTrue(font.delete())
+            val restored = Notebook(ctx, target)
+            restored.library.ensure(LibraryBook(id = LEGACY_BOOK, title = "Memospine."))
+            restore(restored, Uri.fromFile(archive), "review-only")
+            val result = restored.library.books().first().single()
+            assertEquals(original.created, result.created)
+            assertEquals(original.position, result.position)
+            assertEquals(original.readingPage, result.readingPage)
+            val cover = CoverDesign.read(result.front)
+            assertEquals(font.name, cover.layers.single().font)
+            assertArrayEquals(bytes, font.readBytes())
+            assertNotNull(android.graphics.Typeface.Builder(font).build())
+        } finally {
+            font.delete()
+            archive.delete()
+            source.close()
+            target.close()
+        }
+        Unit
+    }
+
+    @Test
     fun catalogRoundTripAndIsolation() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(ctx, NotebookDb::class.java).build()
         val dest = Room.inMemoryDatabaseBuilder(ctx, NotebookDb::class.java).build()
@@ -143,6 +184,12 @@ class LibraryTest {
             original.writeBytes(byteArrayOf(1, 7, 9))
             val photo = CoverLayer(kind = "photo", asset = original.name)
             val flower = CoverLayer(kind = "art", asset = "flower", x = .1f, y = .2f, angle = 72f)
+            val frame=CoverLayer(kind="art",asset="polaroid",ratio=512f/436)
+            val framed=listOf(photo).placeArtwork(frame,photo.id)
+            assertEquals(listOf(photo.id,frame.id),framed.map {it.id})
+            assertTrue(framed.first().crop)
+            assertEquals(photo.x,framed.last().x)
+            assertEquals(framed,CoverDesign.read(CoverDesign(layers=framed).encode()).layers)
             val design = CoverDesign(layers = listOf(flower, flower.copy(id = uid()), photo))
             val a =
                 LibraryBook(
