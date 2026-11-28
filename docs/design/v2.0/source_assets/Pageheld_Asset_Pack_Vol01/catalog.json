@@ -1,0 +1,171 @@
+{
+  "packId": "pageheld.vol01.test",
+  "version": 1,
+  "assets": [
+    {
+      "id": "linen",
+      "category": "materials",
+      "name": "Linen",
+      "nameKo": "린넨",
+      "path": "materials/linen.png",
+      "width": 512,
+      "height": 512,
+      "variant": "original",
+      "tileMode": "mirrored",
+      "nativeCropPixels": 186,
+      "tintSource": "materials/tint_sources/linen_neutral.png"
+    },
+    {
+      "id": "leather",
+      "category": "materials",
+      "name": "Leather",
+      "nameKo": "가죽",
+      "path": "materials/leather.png",
+      "width": 512,
+      "height": 512,
+      "variant": "original",
+      "tileMode": "mirrored",
+      "nativeCropPixels": 186,
+      "tintSource": "materials/tint_sources/leather_neutral.png"
+    },
+    {
+      "id": "paper",
+      "category": "materials",
+      "name": "Paper",
+      "nameKo": "종이",
+      "path": "materials/paper.png",
+      "width": 512,
+      "height": 512,
+      "variant": "original",
+      "tileMode": "mirrored",
+      "nativeCropPixels": 186,
+      "tintSource": "materials/tint_sources/paper_neutral.png"
+    },
+    {
+      "id": "flower",
+      "category": "stickers",
+      "name": "Flower",
+      "nameKo": "꽃",
+      "path": "stickers/flower.png",
+      "width": 512,
+      "height": 454,
+      "transparent": true,
+      "nativeCropPixels": [
+        248,
+        220
+      ]
+    },
+    {
+      "id": "clover",
+      "category": "stickers",
+      "name": "Clover",
+      "nameKo": "클로버",
+      "path": "stickers/clover.png",
+      "width": 447,
+      "height": 512,
+      "transparent": true,
+      "nativeCropPixels": [
+        178,
+        204
+      ]
+    },
+    {
+      "id": "leaf",
+      "category": "stickers",
+      "name": "Leaf",
+      "nameKo": "나뭇잎",
+      "path": "stickers/leaf.png",
+      "width": 497,
+      "height": 512,
+      "transparent": true,
+      "nativeCropPixels": [
+        230,
+        237
+      ]
+    },
+    {
+      "id": "cat",
+      "category": "stickers",
+      "name": "Cat",
+      "nameKo": "고양이",
+      "path": "stickers/cat.png",
+      "width": 512,
+      "height": 329,
+      "transparent": true,
+      "nativeCropPixels": [
+        268,
+        172
+      ]
+    },
+    {
+      "id": "moon",
+      "category": "stickers",
+      "name": "Moon",
+      "nameKo": "달",
+      "path": "stickers/moon.png",
+      "width": 512,
+      "height": 447,
+      "transparent": true,
+      "nativeCropPixels": [
+        196,
+        171
+      ]
+    },
+    {
+      "id": "star",
+      "category": "stickers",
+      "name": "Star",
+      "nameKo": "별",
+      "path": "stickers/star.png",
+      "width": 512,
+      "height": 483,
+      "transparent": true,
+      "nativeCropPixels": [
+        195,
+        184
+      ]
+    },
+    {
+      "id": "polaroid",
+      "category": "frames",
+      "name": "Polaroid frame",
+      "nameKo": "폴라로이드 프레임",
+      "path": "frames/polaroid.png",
+      "width": 512,
+      "height": 436,
+      "transparent": true,
+      "nativeCropPixels": [
+        317,
+        270
+      ]
+    },
+    {
+      "id": "gingham",
+      "category": "tapes",
+      "name": "Gingham tape",
+      "nameKo": "체크 마스킹 테이프",
+      "path": "tapes/gingham.png",
+      "width": 512,
+      "height": 178,
+      "transparent": true,
+      "nativeCropPixels": [
+        422,
+        147
+      ]
+    },
+    {
+      "id": "floral",
+      "category": "tapes",
+      "name": "Floral tape",
+      "nameKo": "꽃무늬 마스킹 테이프",
+      "path": "tapes/floral.png",
+      "width": 512,
+      "height": 186,
+      "transparent": true,
+      "nativeCropPixels": [
+        433,
+        157
+      ]
+    }
+  ]
+}

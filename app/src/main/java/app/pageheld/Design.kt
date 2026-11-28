@@ -40,7 +40,7 @@ val edge = Color(0xffddd4c1)
 val swatches =
     listOf(ivory, Color(0xfff5e9d6), Color(0xfff4e3de), Color(0xffe4ebef), Color(0xffe5eadc))
 val serif = FontFamily(Font(R.font.caslon_regular,FontWeight.Normal), Font(R.font.caslon_italic,FontWeight.Normal,FontStyle.Italic))
-internal const val PAGEHELD_WORDMARK = "Pageheld."
+internal const val PAGEHELD_WORDMARK = "Memospine."
 val round = RoundedCornerShape(9.dp)
 val icons =
     mapOf(

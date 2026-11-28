@@ -15,7 +15,7 @@ class LocationPersistenceTest {
 
     private fun open(name: String) =
         Room.databaseBuilder(context, NotebookDb::class.java, name)
-            .addMigrations(locationMigration, mediaPlacementMigration, weatherMigration, documentMigration)
+            .addMigrations(locationMigration, mediaPlacementMigration, weatherMigration, documentMigration, libraryMigration)
             .build()
 
     @Test

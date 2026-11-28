@@ -38,7 +38,7 @@ fun stamp(ms: Long, skeleton: String, locale: java.util.Locale = java.util.Local
 fun localDay(day: LocalDate) =
     stamp(day.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(), "yMMMd")
 
-@Entity
+@Entity(indices = [Index("bookId")])
 data class Page(
     @PrimaryKey val id: String = uid(),
     val created: Long = System.currentTimeMillis(),
@@ -57,6 +57,7 @@ data class Page(
     @ColumnInfo(defaultValue = "''") val weather: String = "",
     @ColumnInfo(defaultValue = "''") val notebookLayout: String = "",
     @ColumnInfo(defaultValue = "0") val draft: Boolean = false,
+    @ColumnInfo(defaultValue = "'legacy'") val bookId: String = LEGACY_BOOK,
 )
 
 fun Page.heading() =
@@ -66,12 +67,13 @@ fun Page.heading() =
 
 fun Page.files() = media.lines().filter { it.isNotBlank() }
 
-@Entity
+@Entity(indices = [Index("bookId")])
 data class Chapter(
     @PrimaryKey val id: String = uid(),
     val name: String,
     val cover: Int,
     val position: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "'legacy'") val bookId: String = LEGACY_BOOK,
 )
 
 @Entity(
@@ -208,12 +210,13 @@ internal val documentMigration = object : androidx.room.migration.Migration(4, 5
 }
 
 @Database(
-    entities = [Page::class, Chapter::class, DiaryLocation::class],
-    version = 5,
+    entities = [Page::class, Chapter::class, DiaryLocation::class, LibraryBook::class],
+    version = 6,
     exportSchema = false,
 )
 abstract class NotebookDb : RoomDatabase() {
     abstract fun journal(): JournalDao
+    abstract fun library(): LibraryDao
 }
 
 private val Context.preferences by preferencesDataStore("appearance")
@@ -223,10 +226,11 @@ internal constructor(
     val context: Context,
     val db: NotebookDb =
         Room.databaseBuilder(context, NotebookDb::class.java, "pageheld.db")
-            .addMigrations(locationMigration, mediaPlacementMigration, weatherMigration, documentMigration)
+            .addMigrations(locationMigration, mediaPlacementMigration, weatherMigration, documentMigration, libraryMigration)
             .build(),
 ) {
     val dao = db.journal()
+    val library = db.library()
     internal val inkClipboard = androidx.compose.runtime.mutableStateOf<List<InkLine>>(emptyList())
     val settings =
         context.preferences.data.map { p ->
