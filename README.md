@@ -17,6 +17,8 @@ Memospine (메모스파인) is a private Android library for personal journals &
 
 The signed tablet preview is available on GitHub. If you already use Pageheld, export an encrypted backup from **Profile** before installing. Open `Memospine-Tablet.apk` on your tablet and choose **Update** over your current installation. The preview uses the existing app identity and signing certificate. [Tablet preview release](https://github.com/minsmakes/Pageheld/releases/tag/v2.0-rc.1)
 
+If Android reports a signature conflict, your installation uses a different signing key, such as the development key. Keep Pageheld installed while you export an encrypted backup outside the app and verify that you have the file and passphrase. To switch signing keys, you must then uninstall the old app, install the preview and restore the backup from **Profile → Import**. Uninstalling erases the journal stored in the app.
+
 Library holds nine books per shelf page. Select a book before opening Today or Moments. Entries and locations follow the selected book. Use **New Book** to create a cover, then open **Book Studio** to customize materials, lettering, photos and decorations. The phone edition continues to use the original single-notebook navigation.
 
 [2.0 installation, upgrade and encrypted backup guidance](docs/design/v2.0/RELEASE_NOTES.md) · [Release progress and acceptance evidence](docs/design/v2.0/IMPLEMENTATION_STATUS.md) · [Book Studio artwork credits](docs/design/v2.0/source_assets/Pageheld_Asset_Pack_Vol01/README.md)
