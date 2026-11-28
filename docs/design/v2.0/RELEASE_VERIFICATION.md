@@ -83,7 +83,9 @@ Android gfxinfo sampled seven page transitions through the populated review Libr
 
 ## Physical device and release scope
 
-A connected Galaxy Tab S8 Ultra contained an existing 1.9.2 installation. All candidate installs used disposable emulator data. Physical pen pressure, palm-resting behavior, camera, GPS, real video playback, thermal performance and TalkBack traversal remain **NOT TESTED** on production hardware. The visual, large-library and storage-pressure checks still open in the [implementation tracker](IMPLEMENTATION_STATUS.md) also apply.
+The signed public APK upgrade checks used disposable emulator data. A Galaxy Tab S8 Ultra had a development-signed Pageheld 1.9.2 installation. Android rejected the public APK on that device. A local build of the same 2.0 tablet application signed with the tablet's existing development key installed in place. Android reported version 2.0 (13), retained the original installation timestamp and launched Library. This local build is for that existing development installation.
+
+Physical pen pressure, palm-resting behavior, camera, GPS, real video playback, thermal performance and TalkBack traversal remain **NOT TESTED** on production hardware. The visual, large-library and storage-pressure checks still open in the [implementation tracker](IMPLEMENTATION_STATUS.md) also apply.
 
 **Remaining work** includes Korean accessibility and error copy in the new editing surfaces, end-to-end object rotation and stacking coverage, large or damaged source-photo fixtures, and storage-pressure testing. Some artwork descriptions and error messages in BookStudio.kt and PageDecorations.kt still use English when the system language is Korean.
 
