@@ -1,0 +1,24 @@
+v1.9.2/Pageheld.apk
+package: name='app.pageheld' versionCode='12' versionName='1.9.2' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+sdkVersion:'28'
+Verified using v3 scheme (APK Signature Scheme v3): true
+Signer #1 certificate SHA-256 digest: e8e19f1817016d8eb81247c36e1e6c6f3414ed907a45cdb3cb3271d0d69b0b33
+APK SHA-256 D7566DEE790E140D647FC071C4BD0FA70AB7CFFE1F7B43319DEC260E5F7FB972
+v1.9.2/Pageheld-Tablet.apk
+package: name='app.pageheld' versionCode='12' versionName='1.9.2' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+sdkVersion:'28'
+Verified using v3 scheme (APK Signature Scheme v3): true
+Signer #1 certificate SHA-256 digest: e8e19f1817016d8eb81247c36e1e6c6f3414ed907a45cdb3cb3271d0d69b0b33
+APK SHA-256 F51102B7C095313C57FFA0E5E9BFD94E43F803BB04599BB050755D3C85E430E7
+v2.0-candidate/Memospine.apk
+package: name='app.pageheld' versionCode='13' versionName='2.0' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+sdkVersion:'28'
+Verified using v3 scheme (APK Signature Scheme v3): true
+Signer #1 certificate SHA-256 digest: e8e19f1817016d8eb81247c36e1e6c6f3414ed907a45cdb3cb3271d0d69b0b33
+APK SHA-256 67050C43AAE2BAD97CE83D5B7D2C457797D12F2E7202729AFDD32713428725CB
+v2.0-candidate/Memospine-Tablet.apk
+package: name='app.pageheld' versionCode='13' versionName='2.0' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+sdkVersion:'28'
+Verified using v3 scheme (APK Signature Scheme v3): true
+Signer #1 certificate SHA-256 digest: e8e19f1817016d8eb81247c36e1e6c6f3414ed907a45cdb3cb3271d0d69b0b33
+APK SHA-256 860B1B05942A354199664E89286E9D2889794966C6C4BBFA508B10C25AAFE5BD

@@ -17,6 +17,12 @@ Library holds nine books per shelf page. Select a book before opening Today or M
 
 [2.0 installation, upgrade and encrypted backup guidance](docs/design/v2.0/RELEASE_NOTES.md) · [Release progress and acceptance evidence](docs/design/v2.0/IMPLEMENTATION_STATUS.md) · [Book Studio artwork credits](docs/design/v2.0/source_assets/Pageheld_Asset_Pack_Vol01/README.md)
 
+| Personal Library | Book Studio | Open book |
+| --- | --- | --- |
+| [![Nine books on three shelves](docs/design/v2.0/verification/library/actual.png)](docs/design/v2.0/verification/library/actual.png) | [![Editing Days in Jeju](docs/design/v2.0/verification/book_studio/actual.png)](docs/design/v2.0/verification/book_studio/actual.png) | [![Two-page diary with top writing tools](docs/design/v2.0/verification/open_book/actual.png)](docs/design/v2.0/verification/open_book/actual.png) |
+
+These screenshots come from the running tablet candidate with a disposable journal. [Reference comparisons, test results and release limitations](docs/design/v2.0/RELEASE_VERIFICATION.md)
+
 ## Pageheld 1.7 screenshots
 
 <p align="center"><a href="docs/design/screenshots/v1.7/overview.jpg"><img src="docs/design/screenshots/v1.7/overview.jpg" width="960" alt="Pageheld 1.7 on a landscape tablet, showing Today, the diary cover, chapters, Moments, and the writing tools"></a></p>

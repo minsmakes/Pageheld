@@ -2,6 +2,8 @@
 
 Draft for Min's Makes. Publication is pending release acceptance.
 
+The prepared release title and annotated tag message are **Memospine. 2.0**. The reserved tag name is `v2.0`. Select the accepted commit once the release gates pass. The published assets should use `Memospine.apk` and `Memospine-Tablet.apk`. Adding byte-identical copies named `Pageheld.apk` and `Pageheld-Tablet.apk` at publication would keep the existing download links working.
+
 Pageheld is becoming Memospine. Your existing notebook, pages, drafts, photographs, locations and chapters move into one book during the update. Your entries keep their original titles.
 
 ## Tablet edition

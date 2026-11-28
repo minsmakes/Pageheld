@@ -1,0 +1,16 @@
+app.pageheld.CoverCaptureTest:
+app.pageheld.CoverCaptureTest:
+app.pageheld.DiaryDocumentTest:.........
+app.pageheld.HardcoverNavigationTest:....
+app.pageheld.LibraryAppearanceTest:
+app.pageheld.LibraryAppearanceTest:
+app.pageheld.LibraryReviewFixture:
+app.pageheld.LibraryReviewFixture:
+app.pageheld.LibraryTest:....
+app.pageheld.LocationPersistenceTest:..
+app.pageheld.NotebookExperienceTest:..
+app.pageheld.NotebookTest:.
+app.pageheld.StudioJourneyTest:
+app.pageheld.StudioJourneyTest:
+Time: 79.194
+OK (27 tests)
